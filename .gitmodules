@@ -1,0 +1,6 @@
+[submodule "3rdparty/openmesh"]
+	path = 3rdparty/openmesh
+	url = https://salsa.debian.org/science-team/openmesh.git
+[submodule "3rdparty/eigen"]
+	path = 3rdparty/eigen
+	url = https://gitlab.com/libeigen/eigen.git
