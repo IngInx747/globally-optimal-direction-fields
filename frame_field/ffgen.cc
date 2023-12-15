@@ -1,0 +1,655 @@
+#include <math.h>
+
+///
+/// C version of r1mach and d1mach from core (netlib)
+/// specialized for IEEE arithmetic
+/// 
+/// MACHINE CONSTANTS (s for single, d for double)
+/// {S|D}1MACH(1) = B**(EMIN-1), THE SMALLEST POSITIVE MAGNITUDE.
+/// {S|D}1MACH(2) = B**EMAX*(1 - B**(-T)), THE LARGEST MAGNITUDE.
+/// {S|D}1MACH(3) = B**(-T), THE SMALLEST RELATIVE SPACING.
+/// {S|D}1MACH(4) = B**(1-T), THE LARGEST RELATIVE SPACING.
+/// {S|D}1MACH(5) = LOG10(B)
+///
+static const double _mach[]
+{
+    2.2250738585072014e-308,
+    1.7976931348623157e+308,
+    1.1102230246251565e-16,
+    2.2204460492503131e-16,
+    3.0102999566398120e-01
+};
+
+static const double _s11r[]
+{
+    0.0448875760891932036595562553276,
+    0.0278480909574822965157922173757,
+    0.00394490790249120295818107628687,
+    -0.00157697939158619172562804651751,
+    -0.0000886578217796691901712579357311,
+    0.0000301708056772263120428135787035,
+    9.521839632337438230089618156e-7,
+    -3.00028307455805582080773625835e-7,
+    -6.14917009583473496433650831019e-9,
+    1.85133588988085286010092653662e-9,
+    2.67848449041765751590373973224e-11,
+    -7.82394575359355297437491915705e-12,
+    -8.44240072511090922609176843848e-14,
+    2.41333276776166240844516922196e-14,
+    2.02015531985181413114834031833e-16,
+    -5.68171271075270422851146478874e-17,
+    -3.80082421064644521052871349836e-19,
+    1.05551739229841670238163200361e-19,
+    5.7758422925275435667221605993e-22,
+    -1.58774695838716531303310462626e-22,
+    -7.24181766014636685673730787292e-25
+};
+
+static const double _s11i[]
+{
+    0.100116671557942715638078149123,
+    0.0429600096728215971268270800599,
+    -0.00799014859477407505770275088389,
+    -0.000664114111384495427035329182866,
+    0.000240714510952202000864758517061,
+    9.89085259369337382687437812294e-6,
+    -3.22040860178194578481012477174e-6,
+    -8.08401148192350365282200249069e-8,
+    2.48351290049260966544658921605e-8,
+    4.24154988067028660399867468349e-10,
+    -1.25611378629704490237955971836e-10,
+    -1.56053077919196502557674988724e-12,
+    4.50565044006801278137904597946e-13,
+    4.2641179237225098728291226479e-15,
+    -1.2084245714879456268965803807e-15,
+    -9.01338537885038989528688031325e-18,
+    2.5180796700698002962991581923e-18,
+    1.51955263898294940481729370636e-20,
+    -4.19737873024216866691628952458e-21,
+    -2.092488792285595339755624521e-23,
+    5.72708467031136321701747126611e-24
+};
+
+static const double _s12r[]
+{
+    -0.376145877558191778393359413441,
+    0.0775244431850198578126067647425,
+    0.0120396593748540634695397747695,
+    -0.00385683684390247509721340352427,
+    -0.000232359275790231209370627606991,
+    0.0000697318379146209092637310696007,
+    2.32354473986257272021507575389e-6,
+    -6.71692140309360615694979580992e-7,
+    -1.43946361256617673523038166877e-8,
+    4.06087820907414336567714443732e-9,
+    6.10183339004616075548375321861e-11,
+    -1.69196418769523832825063863136e-11,
+    -1.88669746820541798989965091628e-13,
+    5.16473095452962111184823547686e-14,
+    4.45066881692009291504139737861e-16,
+    -1.20625107617859803735741992452e-16,
+    -8.28193837331508300767103116139e-19,
+    2.22680015825230528892642524445e-19,
+    1.24755889505424049389100515561e-21,
+    -3.33254971913153176741833960484e-22,
+    -1.55307002839777371508497520751e-24
+};
+
+static const double _s12i[]
+{
+    0.0527472790869782317601048210983,
+    0.00823962722148093961886198320927,
+    -0.0205185842051817330153151013327,
+    -0.00184683218270819613487368071941,
+    0.000569681886932212757533488372406,
+    0.0000248774530818801164177266528608,
+    -7.31121019876580624171992432347e-6,
+    -1.92744564223806538367454388776e-7,
+    5.49794278719049727550379096876e-8,
+    9.78237385539447442446850072421e-10,
+    -2.7341624177723508216430132999e-10,
+    -3.51839815887772323640101921381e-12,
+    9.68934411607055794052256859665e-13,
+    9.45703963505047353201918875825e-15,
+    -2.57516976113400217760868402425e-15,
+    -1.97419921753098238455550504742e-17,
+    5.32820017906655555903355375475e-18,
+    3.29581793797656865402793252539e-20,
+    -8.83137325823594007269279476114e-21,
+    -4.50279718100548728336329365981e-23,
+    1.19941679774924468309434420379e-23
+};
+
+static const double _m12r[]
+{
+    0.148523151773238914750879360089,
+    -0.0117856118001224048185631301904,
+    -0.00248887208039014371691400683052,
+    0.000250045060357076469386198883676,
+    0.0000227217776065076434637230864113,
+    -2.48764935230787745662127026799e-6,
+    -1.32138506847814502856384193414e-7,
+    1.50966754393693942843767293542e-8,
+    5.3472999553162661403204445045e-10,
+    -6.26136041009708550772228055719e-11,
+    -1.59574066624737000616598104732e-12,
+    1.89788785691219687197167013023e-13,
+    3.66030609080549274006207730375e-15,
+    -4.39955659500182569051978906011e-16,
+    -6.65848768159000092224193226014e-18,
+    8.06343127453005031535923212263e-19,
+    9.84397490339224661524630997726e-21,
+    -1.19869887155210161836484730378e-21,
+    -1.20634550494837590549640883469e-23,
+    1.47512193662595435067359954287e-24,
+    1.24549093756962710863096766634e-26
+};
+
+static const double _m12i[]
+{
+    -0.0454399665519585306943416687117,
+    -0.0210517666740874019203591488894,
+    0.00194647501081621201871675259482,
+    0.000253466068123907163346571754613,
+    -0.0000268083453427538717591876419304,
+    -1.82138740336918117478832696004e-6,
+    2.04357511048425337951376869602e-7,
+    8.75944656915074206478854298947e-9,
+    -1.01466837126303146739791005703e-9,
+    -3.02573132377805421636557302451e-11,
+    3.57358222114420372764650037191e-12,
+    7.88121312149152771558608913996e-14,
+    -9.42758576193708862552405242331e-15,
+    -1.60439904050827900099939709069e-16,
+    1.93624791035947590366500765061e-17,
+    2.62394448214143482490534256935e-19,
+    -3.18700789496399461681365308408e-20,
+    -3.52400207248027768109209530864e-22,
+    4.30074555255053206057921088056e-23,
+    3.95655079023456015736315286131e-25,
+    -4.84642137915095135859812028886e-26
+};
+
+static int _ns11r {};
+static int _ns11i {};
+static int _ns12r {};
+static int _ns12i {};
+static int _nm12r {};
+static int _nm12i {};
+
+///
+/// evaluate a chebyshev series
+/// adapted from fortran csevl
+///
+static double csevl(const double x, const double *cs, int n)
+{
+    const double twox = x * 2.;
+    double b0 {}, b1 {}, b2 {};
+
+    while (n--)
+    {
+        b2 = b1;
+        b1 = b0;
+        b0 = twox * b1 - b2 + cs[n];
+    }
+
+    return (b0 - b2) / 2;
+}
+
+///
+/// from the original fortran inits
+/// april 1977 version.  w. fullerton, c3, los alamos scientific lab.
+///
+/// initialize the orthogonal series so that inits is the number of terms
+/// needed to insure the error is no larger than eta.  ordinarily, eta
+/// will be chosen to be one-tenth machine precision.
+///
+static int csinit(const double *series, int n, const double eta)
+{
+    double err {};
+
+    while (err <= eta && n--)
+    {
+        err += fabs(series[n]);
+    }
+
+    return n++;
+}
+
+static void csinits()
+{
+    if (!_ns11r) _ns11r = csinit(_s11r, sizeof(_s11r) / sizeof(*_s11r), _mach[2] / 10);
+    if (!_ns11i) _ns11i = csinit(_s11i, sizeof(_s11i) / sizeof(*_s11i), _mach[2] / 10);
+    if (!_ns12r) _ns12r = csinit(_s12r, sizeof(_s12r) / sizeof(*_s12r), _mach[2] / 10);
+    if (!_ns12i) _ns12i = csinit(_s12i, sizeof(_s12i) / sizeof(*_s12i), _mach[2] / 10);
+    if (!_nm12r) _nm12r = csinit(_m12r, sizeof(_m12r) / sizeof(*_m12r), _mach[2] / 10);
+    if (!_nm12i) _nm12i = csinit(_m12i, sizeof(_m12i) / sizeof(*_m12i), _mach[2] / 10);
+}
+
+inline double s11r(const double t) { return csevl(t, _s11r, _ns11r); }
+inline double s11i(const double t) { return csevl(t, _s11i, _ns11i); }
+inline double s12r(const double t) { return csevl(t, _s12r, _ns12r); }
+inline double s12i(const double t) { return csevl(t, _s12i, _ns12i); }
+inline double m12r(const double t) { return csevl(t, _m12r, _nm12r); }
+inline double m12i(const double t) { return csevl(t, _m12i, _nm12i); }
+
+#include <complex>
+
+using Comx = std::complex<double>;
+using std::real;
+using std::imag;
+using std::conj;
+using std::arg;
+
+constexpr Comx im { 0,1 };
+inline Comx e_i(const double s) { return { cos(s), sin(s) }; }
+
+inline Comx s11(const double t) { return { s11r(t), s11i(t) }; }
+inline Comx s12(const double t) { return { s12r(t), s12i(t) }; }
+inline Comx m12(const double t) { return { m12r(t), m12i(t) }; }
+
+#include "geometry.hh"
+
+constexpr double kPi = pi<double>();
+
+#if 0
+inline Comx _D_IJ(const double s, const double gii, const double gij, const double gjj)
+{
+    const Comx es = e_i(s);
+    const double s2 = s*s, s3 = s2*s, s4 = s2*s2;
+    return
+        (
+            (gii*3 + gij*4 + gjj*3)
+            + im*s*(gii + gij + gjj)
+            - im*s3*gij/6.
+            + (
+                -(gii*3 + gij*4 + gjj*3)
+                + im*s*(gii*2 + gij*3 + gjj*2)
+                + s2*(gii + gij*2 + gjj)/2.) * es
+        ) / s4
+        + (gii - gij*2 + gjj)/24.
+        - im*s*(gii - gij*2 + gjj)/60.;
+}
+
+/// gii = |e_{ki}|^2, gij = <e_{ki}, e_{kj}>, gjj = |e_{jk}|^2
+inline Comx D_IJ(const double s, const double gii, const double gij, const double gjj)
+{
+    if (abs(s) > kPi)
+    {
+        return _D_IJ(s, gii, gij, gjj);
+    }
+    else if (s > 0) // [0, pi]
+    {
+        const double t = s*2/kPi - 1; // [-1,1]
+        return conj(s11(t)*(gii + gjj) + s12(t)*gij);
+    }
+    else // [-pi, 0]
+    {
+        const double t = -s*2/kPi - 1; // [-1,1]
+        return s11(t)*(gii + gjj) + s12(t)*gij;
+    }
+}
+
+/// gjj = |e_{ij}|^2, gjk = <e_{ij}, e_{ik}>, gkk = |e_{ki}|^2
+inline Comx D_II(const double s, const double gjj, const double gjk, const double gkk)
+{
+    return { ((gjj - gjk*2 + gkk) + s*s*(gjj + gjk + gkk)/90) / 4., 0 };
+}
+
+#endif
+
+///            k   _
+///        /  / \  \
+///       1  /   \  0
+///     |/  /     \  \
+///        /_______\
+///      i   --2->   j
+///
+/// e_0 = e_{jk},  e_1 = e_{ki},  e_2 = e_{ij}
+/// g11 = |e_1|^2, g22 = |e_2|^2, g12 = <-e_1, e_2>
+inline Comx _D_JK(const double s, const double g11, const double g22, const double g12)
+{
+    const Comx es = e_i(s);
+    const double s2 = s*s, s3 = s2*s, s4 = s2*s2, s5 = s3*s2;
+    const Comx f1 = 3. + im*s            + s4/24. - im*s5/60. + es*(-3. + im*s*2. + s2*.5);
+    const Comx f2 = 4. + im*s - im*s3/6. - s4/12. + im*s5/30. + es*(-4. + im*s*3. + s2);
+    return (f1 * (g11 + g22) + f2 * g12) / s4;
+}
+
+///            k   _
+///        /  / \  \
+///       1  /   \  0
+///     |/  /     \  \
+///        /_______\
+///      i   --2->   j
+///
+/// e_0 = e_{jk},  e_1 = e_{ki},  e_2 = e_{ij}
+/// g11 = |e_1|^2, g22 = |e_2|^2, g12 = <-e_1, e_2>
+inline Comx D_JK(const double s, const double g11, const double g22, const double g12)
+{
+    if (abs(s) > kPi)
+    {
+        return _D_JK(s, g11, g22, g12);
+    }
+    else if (s > 0) // [0, pi]
+    {
+        const double t = s*2/kPi - 1; // [-1,1]
+        return conj(s11(t)*(g11 + g22) + s12(t)*g12);
+    }
+    else // [-pi, 0]
+    {
+        const double t = -s*2/kPi - 1; // [-1,1]
+        return s11(t)*(g11 + g22) + s12(t)*g12;
+    }
+}
+
+///            k   _
+///        /  / \  \
+///       1  /   \  0
+///     |/  /     \  \
+///        /_______\
+///      i   --2->   j
+///
+/// e_0 = e_{jk},  e_1 = e_{ki},  e_2 = e_{ij}
+/// g11 = |e_1|^2, g22 = |e_2|^2, g12 = <-e_1, e_2>
+/// g00 = |e_1 + e_2|^2 = |e_1|^2 + |e_2|^2 + 2*<e_1, e_2> = g11 + g22 - 2*g12
+inline Comx D_II(const double s, const double g11, const double g22, const double g12)
+{
+    return { ((g11 + g22 - g12*2) + s*s*(g11 + g22 + g12)/90.) / 4., 0 };
+}
+
+inline Comx _M_JK(const double s)
+{
+    const Comx es = e_i(s);
+    const double s2 = s*s;
+    return (es*6. - 6. - im*s*6. + s2*3 + im*s2*s) / (s2*s2*3.);
+}
+
+inline Comx M_JK(const double s)
+{
+    if (abs(s) > kPi)
+    {
+        return _M_JK(s);
+    }
+    else if (s > 0) // [0, pi]
+    {
+        const double t = s*2/kPi - 1; // [-1,1]
+        return conj(m12(t));
+    }
+    else // [-pi, 0]
+    {
+        const double t = -s*2/kPi - 1; // [-1,1]
+        return m12(t);
+    }
+}
+
+inline Comx M_II()
+{
+    return { 1 / 6., 0 };
+}
+
+inline double normalize_angle(double t)
+{
+    t = fmod(t, kPi*2.);
+    return (t>=kPi) ? (t - kPi*2.) : (t<-kPi) ? (t + kPi*2.) : t; // [-pi, pi)
+}
+
+#include "tri_mesh.hh"
+
+using namespace OpenMesh;
+
+inline double calc_corner_angle(const TriMesh &mesh, const Hh &hh)
+{
+    auto hdge = make_smart(hh, mesh);
+    if (hdge.is_boundary()) return 0;
+    const double a = mesh.calc_edge_length(hdge.next());
+    const double b = mesh.calc_edge_length(hdge.prev());
+    const double c = mesh.calc_edge_length(hdge);
+    return acos(cosine(a, b, c));
+}
+
+inline double calc_rescaled_ratio(const TriMesh &mesh, const Vh &vh)
+{
+    auto vert = make_smart(vh, mesh);
+    if (vert.is_boundary()) return 1;
+    double s {};
+
+    for (auto hdge : vert.outgoing_halfedges())
+        s += calc_corner_angle(mesh, hdge.next());
+
+    return kPi*2. / s;
+}
+
+inline double calc_rescaled_angle(const TriMesh &mesh, const Hh &hh)
+{
+    auto vert = make_smart(hh, mesh).from();
+    double s0 {}, s1 {}; bool is_met {};
+
+    auto hdge = vert.halfedge(); do
+    {
+        const double t = calc_corner_angle(mesh, hdge.next());
+        if (hdge == hh) is_met = true;
+        if (is_met) s1 += t;
+        else        s0 += t;
+    }
+    while ((hdge = hdge.prev().opp()) != vert.halfedge());
+
+    const double s = vert.is_boundary() ? 1 : kPi*2. / (s0 + s1);
+    return s0 * s;
+}
+
+inline double calc_parallel_transport(const TriMesh &mesh, const Hh &hh)
+{
+    auto hdge = make_smart(hh, mesh);
+    const double t0 = calc_rescaled_angle(mesh, hdge);
+    const double t1 = calc_rescaled_angle(mesh, hdge.opp());
+    return t1 - kPi - t0;
+}
+
+inline double calc_rescaled_curvature(const TriMesh &mesh, const Fh &fh)
+{
+    auto face = make_smart(fh, mesh);
+    double s {};
+
+    for (auto hdge : face.halfedges())
+        s += calc_corner_angle(mesh, hdge)
+           * calc_rescaled_ratio(mesh, hdge.next().to());
+
+    return s - kPi;
+}
+
+inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
+{
+    const auto ex = mesh.calc_edge_vector(mesh.halfedge_handle(vh));
+    const auto nz = mesh.calc_normal(vh).normalized();
+    const auto nx = (ex - dot(ex,nz)*nz).normalized();
+    const auto ny = cross(nz, nx).normalized();
+    return nx*real(u) + ny*imag(u);
+}
+
+static const char *_var_vid { "vert:index" };
+static const char *_var_fid { "face:index" };
+
+static int index_vertices(TriMesh &mesh)
+{
+    auto v_i = getOrMakeProperty<Vh, int>(mesh, _var_vid);
+    int nv {};
+
+    for (auto vert : mesh.vertices())
+    { v_i[vert] = nv++; }
+
+    return nv;
+}
+
+#include "linear_system.hh"
+
+///
+///            2   _
+///        /  / \  \
+///       1  /   \  0
+///     |/  /     \  \
+///        /_______\
+///      0   --2->   1
+///
+/// e_0 = e_{12},  e_1 = e_{20},  e_2 = e_{01}
+///
+static int populate_mass_energy_matrix(
+    const TriMesh &mesh,
+    Eigen::SparseMatrix<Comx> &M,
+    Eigen::SparseMatrix<Comx> &A,
+    const int    n,
+    const double s)
+{
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    const int nv = (int)mesh.n_vertices();
+
+    std::vector<Eigen::Triplet<Comx>> coef_m {};
+    std::vector<Eigen::Triplet<Comx>> coef_a {};
+
+    for (auto face : mesh.faces())
+    {
+        auto hdge0 = face.halfedge(); // h_{12}
+        auto hdge1 = hdge0.next();    // h_{20}
+        auto hdge2 = hdge0.prev();    // h_{01}
+        const int i0 = v_i[hdge1.to()];
+        const int i1 = v_i[hdge2.to()];
+        const int i2 = v_i[hdge0.to()];
+        const double a  = mesh.calc_face_area(face);
+        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
+        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
+        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
+        const double tf = calc_rescaled_curvature(mesh, face)  * n; // Omega: bundle curvature
+        //printf("%d, %d, %d\n", i0, i1, i2);
+        //printf("%.1lf, %.1lf, %.1lf, %.1lf\n", degree(t0), degree(t1), degree(t2), degree(tf));
+        const auto m_ii = M_II();
+        const auto m_jk = M_JK(tf);
+        const auto r0 = conj(e_i(t0)); // r_{12}^H
+        const auto r1 = conj(e_i(t1)); // r_{20}^H
+        const auto r2 = conj(e_i(t2)); // r_{01}^H
+        const auto e0 = mesh.calc_edge_vector(hdge0); // e_{12}
+        const auto e1 = mesh.calc_edge_vector(hdge1); // e_{20}
+        const auto e2 = mesh.calc_edge_vector(hdge2); // e_{01}
+        const double g00 = dot(e0, e0);
+        const double g11 = dot(e1, e1);
+        const double g22 = dot(e2, e2);
+        const double g12 = dot(e1,-e2);
+        const double g20 = dot(e2,-e0);
+        const double g01 = dot(e0,-e1);
+        const auto d_00 = D_II(tf, g11, g22, g12) / a;
+        const auto d_11 = D_II(tf, g22, g00, g20) / a;
+        const auto d_22 = D_II(tf, g00, g11, g01) / a;
+        const auto d_12 = D_JK(tf, g11, g22, g12) / a;
+        const auto d_20 = D_JK(tf, g22, g00, g20) / a;
+        const auto d_01 = D_JK(tf, g00, g11, g01) / a;
+        const auto k_ii = (m_ii * tf) * s;
+        const auto k_jk = (m_jk * tf - im*.5) * s;
+        // M
+        coef_m.emplace_back(i0, i0, m_ii * a);
+        coef_m.emplace_back(i1, i1, m_ii * a);
+        coef_m.emplace_back(i2, i2, m_ii * a);
+        coef_m.emplace_back(i1, i2, m_jk * r0 * a);
+        coef_m.emplace_back(i2, i0, m_jk * r1 * a);
+        coef_m.emplace_back(i0, i1, m_jk * r2 * a);
+        coef_m.emplace_back(i2, i1, conj(m_jk * r0 * a));
+        coef_m.emplace_back(i0, i2, conj(m_jk * r1 * a));
+        coef_m.emplace_back(i1, i0, conj(m_jk * r2 * a));
+        // A
+        coef_a.emplace_back(i0, i0, d_00 - k_ii);
+        coef_a.emplace_back(i1, i1, d_11 - k_ii);
+        coef_a.emplace_back(i2, i2, d_22 - k_ii);
+        coef_a.emplace_back(i1, i2, (d_12 - k_jk) * r0);
+        coef_a.emplace_back(i2, i0, (d_20 - k_jk) * r1);
+        coef_a.emplace_back(i0, i1, (d_01 - k_jk) * r2);
+        coef_a.emplace_back(i2, i1, conj((d_12 - k_jk) * r0));
+        coef_a.emplace_back(i0, i2, conj((d_20 - k_jk) * r1));
+        coef_a.emplace_back(i1, i0, conj((d_01 - k_jk) * r2));
+    }
+
+    M.resize(nv, nv); M.setZero();
+    M.setFromTriplets(coef_m.begin(), coef_m.end()); coef_m.clear();
+
+    A.resize(nv, nv); A.setZero();
+    A.setFromTriplets(coef_a.begin(), coef_a.end()); coef_a.clear();
+
+    return 0;
+}
+
+static int calculate_singularities(TriMesh &mesh, const int n, const Eigen::VectorX<Comx> &u)
+{
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    int sum_idx {};
+
+    for (auto face : mesh.faces())
+        mesh.status(face).set_selected(false);
+
+    for (auto face : mesh.faces()) if (!face.is_boundary())
+    {
+        auto hdge0 = face.halfedge(); // h_{12}
+        auto hdge1 = hdge0.next();    // h_{20}
+        auto hdge2 = hdge0.prev();    // h_{01}
+        const int i0 = v_i[hdge1.to()];
+        const int i1 = v_i[hdge2.to()];
+        const int i2 = v_i[hdge0.to()];
+        const double a  = mesh.calc_face_area(face);
+        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
+        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
+        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
+        const double tf = normalize_angle(calc_rescaled_curvature(mesh, face) * n);
+        const auto &z0 = u(i0);
+        const auto &z1 = u(i1);
+        const auto &z2 = u(i2);
+        const double w0 = normalize_angle(arg(z2) - arg(z1) - t0);
+        const double w1 = normalize_angle(arg(z0) - arg(z2) - t1);
+        const double w2 = normalize_angle(arg(z1) - arg(z0) - t2);
+        const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
+        const int idx = (int)round(ph);
+        mesh.status(face).set_selected(idx != 0);
+        //if (idx) { print_face(mesh, face); printf("\n"); }
+        sum_idx += idx;
+    }
+
+    return sum_idx;
+}
+
+static void populate_solution(TriMesh &mesh, const char *var_vvec, const int n, const Eigen::VectorX<Comx> &u)
+{
+    auto v_v = getOrMakeProperty<Vh, Vec3>(mesh, var_vvec);
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+
+    for (auto vert : mesh.vertices())
+    {
+        const auto z = e_i(arg(u(v_i[vert]))/n);
+        const auto d = pull_back(mesh, vert, z);
+        v_v[vert] = d.normalized();
+    }
+}
+
+int generate_vertex_n_rosy(TriMesh &mesh, const char *var_vvec, const int n, const double s, const double lambda)
+{
+    constexpr double kEps = 1e-8;
+    Eigen::SparseMatrix<Comx> M, A;
+    Eigen::VectorX<Comx> u;
+
+    csinits();
+
+    index_vertices(mesh);
+    populate_mass_energy_matrix(mesh, M, A, n, s);
+    A += M * (-lambda + kEps);
+
+    dump_sparse_matrix(M, "dump.M.mat");
+    dump_sparse_matrix(A, "dump.A.mat");
+
+    u = Eigen::VectorX<Comx>::Ones(A.rows());
+    int err = solve_inversed_power(A, M, u, 1e-6, 1000);
+    //if (err) return err;
+
+    //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
+    std::cout << "min eigv = " << u.dot(A*u) / u.dot(M*u) << std::endl;
+
+    int si = calculate_singularities(mesh, n, u);
+    std::cout << "sum idx  = " << si << std::endl;
+
+    populate_solution(mesh, var_vvec, n, u);
+
+    return err;
+}
