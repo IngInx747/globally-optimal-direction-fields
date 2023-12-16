@@ -40,7 +40,7 @@ inline const ValueT *getPropertyPtr(const PolyConnectivity &mesh, const char *pr
 }
 
 template<typename HandleT, typename ValueT>
-inline void removeProperty(const PolyConnectivity &mesh, const char *propname)
+inline void removeProperty(PolyConnectivity &mesh, const char *propname)
 {
     typename HandleToPropHandle<HandleT, ValueT>::type prop;
     if (mesh.get_property_handle(prop, propname)) mesh.remove_property(prop);

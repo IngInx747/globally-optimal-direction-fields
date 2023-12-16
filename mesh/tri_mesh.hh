@@ -52,6 +52,24 @@ struct TriMesh : public OpenMesh::TriMesh_ArrayKernelT<TriMeshTraits>
 {};
 
 ////////////////////////////////////////////////////////////////
+/// Topology
+////////////////////////////////////////////////////////////////
+
+// Tell if a halfedge is of the same orientation as its associated edge
+inline bool is_sync(const TriMesh &mesh, const Hh &hh)
+{
+    auto hdge = make_smart(hh, mesh);
+    return hdge.edge().v1() == hdge.to();
+}
+
+// Represent an edge-based value with respect of halfedge
+template <typename T>
+inline T sync(const TriMesh &mesh, const Hh &hh, const T &val)
+{
+    return is_sync(mesh, hh) ? val : -val;
+}
+
+////////////////////////////////////////////////////////////////
 /// Debug
 ////////////////////////////////////////////////////////////////
 

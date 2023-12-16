@@ -47,13 +47,18 @@ static void test_global_optimal_cross_field(TriMesh &mesh)
     const int n = 4;
     const double s = 0.;
     const double lambda = 0.;
-    int err = generate_vertex_n_rosy(mesh, var_vvecs[0], n, s, lambda);
+    // generate n-rosy complex
+    //int err = generate_n_rosy_free(mesh, n, s, lambda);
+    int err = generate_n_rosy_curvature_aligned(mesh, n, s, lambda);
     if (err) { printf("err = %d\n", err); if (err != 2) return; }
+    // calculate one direction of the complex
+    pull_back_vertex_space(mesh, var_vvecs[0], n);
+    // save n-rosy cross field
     double al = get_average_edge_length(mesh);
-    //save_vertex_vector(mesh, var_vvecs[0], (mesh_prefix + ".vec0.obj").c_str(), al, al*1e-1);
     std::stringstream ss; ss << mesh_prefix << ".nrosy" << std::to_string(n);
     save_vertex_n_rosy(mesh, var_vvecs[0], n, (ss.str() + ".obj").c_str(), al, al*1e-1);
     save_selected_face_centroids(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-1);
+    //save_vertex_vector(mesh, var_vvecs[0], (mesh_prefix + ".vec0.obj").c_str(), al, al*1e-1);
 }
 
 int main(const int argc, const char **argv)

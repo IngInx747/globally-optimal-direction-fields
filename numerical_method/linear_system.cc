@@ -123,11 +123,11 @@ int solve_conjugate_gradient(
 //    const Eigen::Matrix<double, -1, 1>&,
 //          Eigen::Matrix<double, -1, 1>&);
 
-//template
-//int solve_simplical_LDLT(
-//    const Eigen::SparseMatrix<std::complex<double>>&,
-//    const Eigen::Matrix<std::complex<double>, -1, 1>&,
-//          Eigen::Matrix<std::complex<double>, -1, 1>&);
+template
+int solve_simplical_LDLT(
+    const Eigen::SparseMatrix<std::complex<double>>&,
+    const Eigen::Matrix<std::complex<double>, -1, 1>&,
+          Eigen::Matrix<std::complex<double>, -1, 1>&);
 
 //template
 //int solve_conjugate_gradient(

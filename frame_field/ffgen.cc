@@ -470,7 +470,11 @@ inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
 static const char *_var_vid { "vert:index" };
 static const char *_var_fid { "face:index" };
 
-static int index_vertices(TriMesh &mesh)
+static const char *_var_etr { "edge:transport" };
+static const char *_var_fkv { "face:curvature" };
+static const char *_var_vso { "vert:solution"  };
+
+static int setup_indices(TriMesh &mesh)
 {
     auto v_i = getOrMakeProperty<Vh, int>(mesh, _var_vid);
     int nv {};
@@ -479,6 +483,56 @@ static int index_vertices(TriMesh &mesh)
     { v_i[vert] = nv++; }
 
     return nv;
+}
+
+static int setup_connections(TriMesh &mesh, const int n)
+{
+    auto e_t = getOrMakeProperty<Eh, double>(mesh, _var_etr);
+    auto f_k = getOrMakeProperty<Fh, double>(mesh, _var_fkv);
+
+    for (auto edge : mesh.edges())
+    { e_t[edge] = calc_parallel_transport(mesh, edge.h0()) * n; }
+
+    for (auto face : mesh.faces())
+    { f_k[face] = calc_rescaled_curvature(mesh, face) * n; }
+
+    return 0;
+}
+
+static int calculate_singularities(TriMesh &mesh)
+{
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
+    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
+    auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
+    int sum_idx {};
+
+    for (auto face : mesh.faces())
+        mesh.status(face).set_selected(false);
+
+    for (auto face : mesh.faces()) if (!face.is_boundary())
+    {
+        auto hdge0 = face.halfedge(); // h_{12}
+        auto hdge1 = hdge0.next();    // h_{20}
+        auto hdge2 = hdge0.prev();    // h_{01}
+        const auto &z0 = v_u[hdge1.to()];
+        const auto &z1 = v_u[hdge2.to()];
+        const auto &z2 = v_u[hdge0.to()];
+        const double a  = mesh.calc_face_area(face);
+        const double t0 = sync(mesh, hdge0, e_t[hdge0.edge()]); // rho_{12}
+        const double t1 = sync(mesh, hdge1, e_t[hdge1.edge()]); // rho_{20}
+        const double t2 = sync(mesh, hdge2, e_t[hdge2.edge()]); // rho_{01}
+        const double tf = normalize_angle(f_k[face]); // Omega
+        const double w0 = normalize_angle(arg(z2/z1) - t0);
+        const double w1 = normalize_angle(arg(z0/z2) - t1);
+        const double w2 = normalize_angle(arg(z1/z0) - t2);
+        const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
+        const int idx = (int)round(ph); // index can only be -1, 0, 1
+        mesh.status(face).set_selected(idx != 0);
+        sum_idx += idx;
+    }
+
+    return sum_idx;
 }
 
 #include "linear_system.hh"
@@ -493,18 +547,14 @@ static int index_vertices(TriMesh &mesh)
 ///
 /// e_0 = e_{12},  e_1 = e_{20},  e_2 = e_{01}
 ///
-static int populate_mass_energy_matrix(
-    const TriMesh &mesh,
-    Eigen::SparseMatrix<Comx> &M,
-    Eigen::SparseMatrix<Comx> &A,
-    const int    n,
-    const double s)
+static int setup_mass_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &M)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
+    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
+    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
     const int nv = (int)mesh.n_vertices();
 
-    std::vector<Eigen::Triplet<Comx>> coef_m {};
-    std::vector<Eigen::Triplet<Comx>> coef_a {};
+    std::vector<Eigen::Triplet<Comx>> coef {};
 
     for (auto face : mesh.faces())
     {
@@ -515,12 +565,54 @@ static int populate_mass_energy_matrix(
         const int i1 = v_i[hdge2.to()];
         const int i2 = v_i[hdge0.to()];
         const double a  = mesh.calc_face_area(face);
-        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
-        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
-        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
-        const double tf = calc_rescaled_curvature(mesh, face)  * n; // Omega: bundle curvature
-        //printf("%d, %d, %d\n", i0, i1, i2);
-        //printf("%.1lf, %.1lf, %.1lf, %.1lf\n", degree(t0), degree(t1), degree(t2), degree(tf));
+        const double t0 = sync(mesh, hdge0, e_t[hdge0.edge()]); // rho_{12}
+        const double t1 = sync(mesh, hdge1, e_t[hdge1.edge()]); // rho_{20}
+        const double t2 = sync(mesh, hdge2, e_t[hdge2.edge()]); // rho_{01}
+        const double tf = f_k[face]; // Omega: bundle curvature
+        const auto m_ii = M_II();
+        const auto m_jk = M_JK(tf);
+        const auto r0 = conj(e_i(t0)); // r_{12}^H
+        const auto r1 = conj(e_i(t1)); // r_{20}^H
+        const auto r2 = conj(e_i(t2)); // r_{01}^H
+        coef.emplace_back(i0, i0, m_ii * a);
+        coef.emplace_back(i1, i1, m_ii * a);
+        coef.emplace_back(i2, i2, m_ii * a);
+        coef.emplace_back(i1, i2, m_jk * r0 * a);
+        coef.emplace_back(i2, i0, m_jk * r1 * a);
+        coef.emplace_back(i0, i1, m_jk * r2 * a);
+        coef.emplace_back(i2, i1, conj(m_jk * r0 * a));
+        coef.emplace_back(i0, i2, conj(m_jk * r1 * a));
+        coef.emplace_back(i1, i0, conj(m_jk * r2 * a));
+    }
+
+    M.resize(nv, nv); M.setZero();
+    M.setFromTriplets(coef.begin(), coef.end()); coef.clear();
+
+    return 0;
+}
+
+static int setup_energy_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &A, const double s)
+{
+    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
+    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
+    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
+    const int nv = (int)mesh.n_vertices();
+
+    std::vector<Eigen::Triplet<Comx>> coef {};
+
+    for (auto face : mesh.faces())
+    {
+        auto hdge0 = face.halfedge(); // h_{12}
+        auto hdge1 = hdge0.next();    // h_{20}
+        auto hdge2 = hdge0.prev();    // h_{01}
+        const int i0 = v_i[hdge1.to()];
+        const int i1 = v_i[hdge2.to()];
+        const int i2 = v_i[hdge0.to()];
+        const double a  = mesh.calc_face_area(face);
+        const double t0 = sync(mesh, hdge0, e_t[hdge0.edge()]); // rho_{12}
+        const double t1 = sync(mesh, hdge1, e_t[hdge1.edge()]); // rho_{20}
+        const double t2 = sync(mesh, hdge2, e_t[hdge2.edge()]); // rho_{01}
+        const double tf = f_k[face]; // Omega: bundle curvature
         const auto m_ii = M_II();
         const auto m_jk = M_JK(tf);
         const auto r0 = conj(e_i(t0)); // r_{12}^H
@@ -543,113 +635,130 @@ static int populate_mass_energy_matrix(
         const auto d_01 = D_JK(tf, g00, g11, g01) / a;
         const auto k_ii = (m_ii * tf) * s;
         const auto k_jk = (m_jk * tf - im*.5) * s;
-        // M
-        coef_m.emplace_back(i0, i0, m_ii * a);
-        coef_m.emplace_back(i1, i1, m_ii * a);
-        coef_m.emplace_back(i2, i2, m_ii * a);
-        coef_m.emplace_back(i1, i2, m_jk * r0 * a);
-        coef_m.emplace_back(i2, i0, m_jk * r1 * a);
-        coef_m.emplace_back(i0, i1, m_jk * r2 * a);
-        coef_m.emplace_back(i2, i1, conj(m_jk * r0 * a));
-        coef_m.emplace_back(i0, i2, conj(m_jk * r1 * a));
-        coef_m.emplace_back(i1, i0, conj(m_jk * r2 * a));
-        // A
-        coef_a.emplace_back(i0, i0, d_00 - k_ii);
-        coef_a.emplace_back(i1, i1, d_11 - k_ii);
-        coef_a.emplace_back(i2, i2, d_22 - k_ii);
-        coef_a.emplace_back(i1, i2, (d_12 - k_jk) * r0);
-        coef_a.emplace_back(i2, i0, (d_20 - k_jk) * r1);
-        coef_a.emplace_back(i0, i1, (d_01 - k_jk) * r2);
-        coef_a.emplace_back(i2, i1, conj((d_12 - k_jk) * r0));
-        coef_a.emplace_back(i0, i2, conj((d_20 - k_jk) * r1));
-        coef_a.emplace_back(i1, i0, conj((d_01 - k_jk) * r2));
+        coef.emplace_back(i0, i0, d_00 - k_ii);
+        coef.emplace_back(i1, i1, d_11 - k_ii);
+        coef.emplace_back(i2, i2, d_22 - k_ii);
+        coef.emplace_back(i1, i2, (d_12 - k_jk) * r0);
+        coef.emplace_back(i2, i0, (d_20 - k_jk) * r1);
+        coef.emplace_back(i0, i1, (d_01 - k_jk) * r2);
+        coef.emplace_back(i2, i1, conj((d_12 - k_jk) * r0));
+        coef.emplace_back(i0, i2, conj((d_20 - k_jk) * r1));
+        coef.emplace_back(i1, i0, conj((d_01 - k_jk) * r2));
     }
 
-    M.resize(nv, nv); M.setZero();
-    M.setFromTriplets(coef_m.begin(), coef_m.end()); coef_m.clear();
-
     A.resize(nv, nv); A.setZero();
-    A.setFromTriplets(coef_a.begin(), coef_a.end()); coef_a.clear();
+    A.setFromTriplets(coef.begin(), coef.end()); coef.clear();
 
     return 0;
 }
 
-static int calculate_singularities(TriMesh &mesh, const int n, const Eigen::VectorX<Comx> &u)
+static int setup_curvature_alignment(const TriMesh &mesh, Eigen::VectorX<Comx> &q)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
-    int sum_idx {};
+    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
+    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
+    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
+    const int nv = (int)mesh.n_vertices();
 
-    for (auto face : mesh.faces())
-        mesh.status(face).set_selected(false);
-
-    for (auto face : mesh.faces()) if (!face.is_boundary())
-    {
-        auto hdge0 = face.halfedge(); // h_{12}
-        auto hdge1 = hdge0.next();    // h_{20}
-        auto hdge2 = hdge0.prev();    // h_{01}
-        const int i0 = v_i[hdge1.to()];
-        const int i1 = v_i[hdge2.to()];
-        const int i2 = v_i[hdge0.to()];
-        const double a  = mesh.calc_face_area(face);
-        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
-        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
-        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
-        const double tf = normalize_angle(calc_rescaled_curvature(mesh, face) * n);
-        const auto &z0 = u(i0);
-        const auto &z1 = u(i1);
-        const auto &z2 = u(i2);
-        const double w0 = normalize_angle(arg(z2) - arg(z1) - t0);
-        const double w1 = normalize_angle(arg(z0) - arg(z2) - t1);
-        const double w2 = normalize_angle(arg(z1) - arg(z0) - t2);
-        const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
-        const int idx = (int)round(ph);
-        mesh.status(face).set_selected(idx != 0);
-        //if (idx) { print_face(mesh, face); printf("\n"); }
-        sum_idx += idx;
-    }
-
-    return sum_idx;
-}
-
-static void populate_solution(TriMesh &mesh, const char *var_vvec, const int n, const Eigen::VectorX<Comx> &u)
-{
-    auto v_v = getOrMakeProperty<Vh, Vec3>(mesh, var_vvec);
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    q.resize(nv); q.setZero();
 
     for (auto vert : mesh.vertices())
     {
-        const auto z = e_i(arg(u(v_i[vert]))/n);
-        const auto d = pull_back(mesh, vert, z);
-        v_v[vert] = d.normalized();
+        for (auto hdge : vert.outgoing_halfedges())
+        {
+            const double t = calc_rescaled_angle(mesh, hdge);
+            const double td = mesh.calc_dihedral_angle(hdge);
+            const double l = mesh.calc_edge_length(hdge);
+            q(v_i[vert]) += e_i(t*2.) * -td * l;
+        }
     }
+
+    return 0;
 }
 
-int generate_vertex_n_rosy(TriMesh &mesh, const char *var_vvec, const int n, const double s, const double lambda)
+static void populate_solution(TriMesh &mesh, const Eigen::VectorX<Comx> &u)
+{
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto v_u = getOrMakeProperty<Vh, Comx>(mesh, _var_vso);
+    for (auto vert : mesh.vertices()) v_u[vert] = u(v_i[vert]);
+}
+
+int generate_n_rosy_free(TriMesh &mesh, const int n, const double s, const double lambda)
 {
     constexpr double kEps = 1e-8;
     Eigen::SparseMatrix<Comx> M, A;
     Eigen::VectorX<Comx> u;
 
     csinits();
+    setup_indices(mesh);
+    setup_connections(mesh, n);
+    setup_mass_matrix(mesh, M);
+    setup_energy_matrix(mesh, A, s);
 
-    index_vertices(mesh);
-    populate_mass_energy_matrix(mesh, M, A, n, s);
-    A += M * (-lambda + kEps);
-
-    dump_sparse_matrix(M, "dump.M.mat");
-    dump_sparse_matrix(A, "dump.A.mat");
-
+    A += M*(-lambda + kEps);
+    //dump_sparse_matrix(M, "dump.M.mat");
+    //dump_sparse_matrix(A, "dump.A.mat");
     u = Eigen::VectorX<Comx>::Ones(A.rows());
     int err = solve_inversed_power(A, M, u, 1e-6, 1000);
     //if (err) return err;
 
+    populate_solution(mesh, u);
+
     //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
-    std::cout << "min eigv = " << u.dot(A*u) / u.dot(M*u) << std::endl;
+    std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
 
-    int si = calculate_singularities(mesh, n, u);
-    std::cout << "sum idx  = " << si << std::endl;
+    int si = calculate_singularities(mesh);
+    std::cout << "x_eular = " << si/(n*2) << std::endl;
 
-    populate_solution(mesh, var_vvec, n, u);
+    removeProperty<Vh, int>   (mesh, _var_vid);
+    removeProperty<Eh, double>(mesh, _var_etr);
+    removeProperty<Fh, double>(mesh, _var_fkv);
 
     return err;
+}
+
+int generate_n_rosy_curvature_aligned(TriMesh &mesh, const int n, const double s, const double lambda)
+{
+    constexpr double kEps = 1e-8;
+    Eigen::SparseMatrix<Comx> M, A;
+    Eigen::VectorX<Comx> u, q;
+
+    csinits();
+    setup_indices(mesh);
+    setup_connections(mesh, n);
+    setup_mass_matrix(mesh, M);
+    setup_energy_matrix(mesh, A, s);
+    setup_curvature_alignment(mesh, q);
+
+    if (n == 4) for (int i = 0; i < q.size(); ++i) q(i) *= q(i);
+    q = M*q / sqrt((q.conjugate()*M*q).norm());
+    A += M*(-lambda + kEps);
+
+    int err = solve_simplical_LDLT(A, q, u);
+
+    populate_solution(mesh, u);
+
+    //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
+    //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
+
+    int si = calculate_singularities(mesh);
+    std::cout << "x_eular = " << si/(n*2) << std::endl;
+
+    removeProperty<Vh, int>   (mesh, _var_vid);
+    removeProperty<Eh, double>(mesh, _var_etr);
+    removeProperty<Fh, double>(mesh, _var_fkv);
+
+    return err;
+}
+
+void pull_back_vertex_space(TriMesh &mesh, const char *var_vvec, const int n)
+{
+    auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
+    auto v_v = getOrMakeProperty<Vh, Vec3>(mesh, var_vvec);
+
+    for (auto vert : mesh.vertices())
+    {
+        const auto z = e_i(arg(v_u[vert]) / n);
+        const auto d = pull_back(mesh, vert, z);
+        v_v[vert] = d.normalized();
+    }
 }
