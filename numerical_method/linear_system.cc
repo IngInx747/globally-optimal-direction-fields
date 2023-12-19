@@ -148,6 +148,23 @@ int solve_simplical_LDLT(
 template <class T>
 inline T rayleigh_quotient(
     const Eigen::SparseMatrix<T> &A,
+    const Eigen::VectorX<T> &x)
+{
+    return x.dot(A*x) / x.dot(x);
+};
+
+template <class T>
+inline double rayleigh_residual(
+    const Eigen::SparseMatrix<T> &A,
+    const Eigen::VectorX<T> &x)
+{
+    const T ev = rayleigh_quotient(A, x);
+    return (A*x - x*ev).norm() / x.norm();
+};
+
+template <class T>
+inline T rayleigh_quotient(
+    const Eigen::SparseMatrix<T> &A,
     const Eigen::SparseMatrix<T> &B,
     const Eigen::VectorX<T> &x)
 {
@@ -167,7 +184,6 @@ inline double rayleigh_residual(
 template <class T>
 int solve_inversed_power(
     const Eigen::SparseMatrix<T> &A,
-    const Eigen::SparseMatrix<T> &B,
           Eigen::VectorX<T> &x,
     const double tol,
     const int n_iter)
@@ -183,12 +199,41 @@ int solve_inversed_power(
     for (iter = 0; iter < n_iter; ++iter)
     { // begin of iteration
 
+    x = x.array() - x.mean();
+    x = solver.solve(x);
+    if (solver.info() != Eigen::Success) { return solver.info(); }
+    x.normalize();
+
+    if (rayleigh_residual(A, x) < tol) break;
+
+    } // end of iteration
+
+    return iter < n_iter ? Eigen::Success : Eigen::NoConvergence;
+}
+
+template <class T>
+int solve_inversed_power(
+    const Eigen::SparseMatrix<T> &A,
+    const Eigen::SparseMatrix<T> &B,
+          Eigen::VectorX<T> &x,
+    const double tol,
+    const int n_iter)
+{
+    Eigen::SimplicialLDLT<Eigen::SparseMatrix<T>> solver;
+
+    solver.compute(A);
+    if (solver.info() != Eigen::Success) { return solver.info(); }
+
+    int iter {};
+
+    for (iter = 0; iter < n_iter; ++iter)
+    { // begin of iteration
+
     x = solver.solve(B*x);
     if (solver.info() != Eigen::Success) { return solver.info(); }
     x.normalize();
 
-    //printf("iter = %d\n", iter);
-    //printf("res = %lf\n", rayleigh_residual(A, B, x));
+    //printf("iter[%d], res = %lf\n", iter, rayleigh_residual(A, B, x));
 
     if (rayleigh_residual(A, B, x) < tol) break;
 
