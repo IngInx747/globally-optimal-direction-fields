@@ -1,4 +1,19 @@
-#include <math.h>
+#include <complex>
+#include "tri_mesh.hh"
+#include "geometry.hh"
+#include "chebyshev.hh"
+#include "linear_system.hh"
+
+using namespace OpenMesh;
+
+using Comx = std::complex<double>;
+using std::real;
+using std::imag;
+using std::conj;
+using std::arg;
+
+constexpr double kPi = pi<double>();
+constexpr Comx im { 0,1 };
 
 ///
 /// C version of r1mach and d1mach from core (netlib)
@@ -177,126 +192,28 @@ static int _ns12i {};
 static int _nm12r {};
 static int _nm12i {};
 
-///
-/// evaluate a chebyshev series
-/// adapted from fortran csevl
-///
-static double csevl(const double x, const double *cs, int n)
-{
-    const double twox = x * 2.;
-    double b0 {}, b1 {}, b2 {};
-
-    while (n--)
-    {
-        b2 = b1;
-        b1 = b0;
-        b0 = twox * b1 - b2 + cs[n];
-    }
-
-    return (b0 - b2) / 2;
-}
-
-///
-/// from the original fortran inits
-/// april 1977 version.  w. fullerton, c3, los alamos scientific lab.
-///
-/// initialize the orthogonal series so that inits is the number of terms
-/// needed to insure the error is no larger than eta.  ordinarily, eta
-/// will be chosen to be one-tenth machine precision.
-///
-static int csinit(const double *series, int n, const double eta)
-{
-    double err {};
-
-    while (err <= eta && n--)
-    {
-        err += fabs(series[n]);
-    }
-
-    return n++;
-}
-
 static void csinits()
 {
-    if (!_ns11r) _ns11r = csinit(_s11r, sizeof(_s11r) / sizeof(*_s11r), _mach[2] / 10);
-    if (!_ns11i) _ns11i = csinit(_s11i, sizeof(_s11i) / sizeof(*_s11i), _mach[2] / 10);
-    if (!_ns12r) _ns12r = csinit(_s12r, sizeof(_s12r) / sizeof(*_s12r), _mach[2] / 10);
-    if (!_ns12i) _ns12i = csinit(_s12i, sizeof(_s12i) / sizeof(*_s12i), _mach[2] / 10);
-    if (!_nm12r) _nm12r = csinit(_m12r, sizeof(_m12r) / sizeof(*_m12r), _mach[2] / 10);
-    if (!_nm12i) _nm12i = csinit(_m12i, sizeof(_m12i) / sizeof(*_m12i), _mach[2] / 10);
+    if (!_ns11r) _ns11r = csinit(sizeof(_s11r) / sizeof(*_s11r), _s11r, _mach[2] / 10);
+    if (!_ns11i) _ns11i = csinit(sizeof(_s11i) / sizeof(*_s11i), _s11i, _mach[2] / 10);
+    if (!_ns12r) _ns12r = csinit(sizeof(_s12r) / sizeof(*_s12r), _s12r, _mach[2] / 10);
+    if (!_ns12i) _ns12i = csinit(sizeof(_s12i) / sizeof(*_s12i), _s12i, _mach[2] / 10);
+    if (!_nm12r) _nm12r = csinit(sizeof(_m12r) / sizeof(*_m12r), _m12r, _mach[2] / 10);
+    if (!_nm12i) _nm12i = csinit(sizeof(_m12i) / sizeof(*_m12i), _m12i, _mach[2] / 10);
 }
 
-inline double s11r(const double t) { return csevl(t, _s11r, _ns11r); }
-inline double s11i(const double t) { return csevl(t, _s11i, _ns11i); }
-inline double s12r(const double t) { return csevl(t, _s12r, _ns12r); }
-inline double s12i(const double t) { return csevl(t, _s12i, _ns12i); }
-inline double m12r(const double t) { return csevl(t, _m12r, _nm12r); }
-inline double m12i(const double t) { return csevl(t, _m12i, _nm12i); }
-
-#include <complex>
-
-using Comx = std::complex<double>;
-using std::real;
-using std::imag;
-using std::conj;
-using std::arg;
-
-constexpr Comx im { 0,1 };
-inline Comx e_i(const double s) { return { cos(s), sin(s) }; }
+inline double s11r(const double t) { return cseval(t, _ns11r, _s11r); }
+inline double s11i(const double t) { return cseval(t, _ns11i, _s11i); }
+inline double s12r(const double t) { return cseval(t, _ns12r, _s12r); }
+inline double s12i(const double t) { return cseval(t, _ns12i, _s12i); }
+inline double m12r(const double t) { return cseval(t, _nm12r, _m12r); }
+inline double m12i(const double t) { return cseval(t, _nm12i, _m12i); }
 
 inline Comx s11(const double t) { return { s11r(t), s11i(t) }; }
 inline Comx s12(const double t) { return { s12r(t), s12i(t) }; }
 inline Comx m12(const double t) { return { m12r(t), m12i(t) }; }
 
-#include "geometry.hh"
-
-constexpr double kPi = pi<double>();
-
-#if 0
-inline Comx _D_IJ(const double s, const double gii, const double gij, const double gjj)
-{
-    const Comx es = e_i(s);
-    const double s2 = s*s, s3 = s2*s, s4 = s2*s2;
-    return
-        (
-            (gii*3 + gij*4 + gjj*3)
-            + im*s*(gii + gij + gjj)
-            - im*s3*gij/6.
-            + (
-                -(gii*3 + gij*4 + gjj*3)
-                + im*s*(gii*2 + gij*3 + gjj*2)
-                + s2*(gii + gij*2 + gjj)/2.) * es
-        ) / s4
-        + (gii - gij*2 + gjj)/24.
-        - im*s*(gii - gij*2 + gjj)/60.;
-}
-
-/// gii = |e_{ki}|^2, gij = <e_{ki}, e_{kj}>, gjj = |e_{jk}|^2
-inline Comx D_IJ(const double s, const double gii, const double gij, const double gjj)
-{
-    if (abs(s) > kPi)
-    {
-        return _D_IJ(s, gii, gij, gjj);
-    }
-    else if (s > 0) // [0, pi]
-    {
-        const double t = s*2/kPi - 1; // [-1,1]
-        return conj(s11(t)*(gii + gjj) + s12(t)*gij);
-    }
-    else // [-pi, 0]
-    {
-        const double t = -s*2/kPi - 1; // [-1,1]
-        return s11(t)*(gii + gjj) + s12(t)*gij;
-    }
-}
-
-/// gjj = |e_{ij}|^2, gjk = <e_{ij}, e_{ik}>, gkk = |e_{ki}|^2
-inline Comx D_II(const double s, const double gjj, const double gjk, const double gkk)
-{
-    return { ((gjj - gjk*2 + gkk) + s*s*(gjj + gjk + gkk)/90) / 4., 0 };
-}
-
-#endif
+inline Comx e_i(const double s) { return { cos(s), sin(s) }; }
 
 ///            k   _
 ///        /  / \  \
@@ -388,16 +305,6 @@ inline Comx M_II()
     return { 1 / 6., 0 };
 }
 
-inline double normalize_angle(double t)
-{
-    t = fmod(t, kPi*2.);
-    return (t>=kPi) ? (t - kPi*2.) : (t<-kPi) ? (t + kPi*2.) : t; // [-pi, pi)
-}
-
-#include "tri_mesh.hh"
-
-using namespace OpenMesh;
-
 inline double calc_corner_angle(const TriMesh &mesh, const Hh &hh)
 {
     auto hdge = make_smart(hh, mesh);
@@ -467,6 +374,12 @@ inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
     return nx*real(u) + ny*imag(u);
 }
 
+inline double normalize_angle(double t)
+{
+    t = fmod(t, kPi*2.);
+    return (t>=kPi) ? (t - kPi*2.) : (t<-kPi) ? (t + kPi*2.) : t; // [-pi, pi)
+}
+
 static const char *_var_vid { "vert:index" };
 static const char *_var_fid { "face:index" };
 
@@ -501,7 +414,6 @@ static int setup_connections(TriMesh &mesh, const int n)
 
 static int calculate_singularities(TriMesh &mesh)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
     auto e_t = getProperty<Eh, double>(mesh, _var_etr);
     auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
     auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
@@ -534,8 +446,6 @@ static int calculate_singularities(TriMesh &mesh)
 
     return sum_idx;
 }
-
-#include "linear_system.hh"
 
 ///
 ///            2   _
@@ -729,7 +639,7 @@ int generate_n_rosy_curvature_aligned(TriMesh &mesh, const int n, const double s
     setup_energy_matrix(mesh, A, s);
     setup_curvature_alignment(mesh, q);
 
-    if (n == 4) for (int i = 0; i < q.size(); ++i) q(i) *= q(i);
+    if (n == 4) q = q.array() * q.array(); // q_i = q_i^2
     q = M*q / sqrt((q.conjugate()*M*q).norm());
     A += M*(-lambda + kEps);
 
