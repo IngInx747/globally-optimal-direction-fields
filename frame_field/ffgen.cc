@@ -365,15 +365,6 @@ inline double calc_rescaled_curvature(const TriMesh &mesh, const Fh &fh)
     return s - kPi;
 }
 
-inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
-{
-    const auto ex = mesh.calc_edge_vector(mesh.halfedge_handle(vh));
-    const auto nz = mesh.calc_normal(vh).normalized();
-    const auto nx = (ex - dot(ex,nz)*nz).normalized();
-    const auto ny = cross(nz, nx).normalized();
-    return nx*real(u) + ny*imag(u);
-}
-
 inline double normalize_angle(double t)
 {
     t = fmod(t, kPi*2.);
@@ -412,7 +403,8 @@ static int setup_connections(TriMesh &mesh, const int n)
     return 0;
 }
 
-static int calculate_singularities(TriMesh &mesh)
+#if 0
+static int calculate_singularities_deprecated(TriMesh &mesh)
 {
     auto e_t = getProperty<Eh, double>(mesh, _var_etr);
     auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
@@ -446,6 +438,7 @@ static int calculate_singularities(TriMesh &mesh)
 
     return sum_idx;
 }
+#endif
 
 ///
 ///            2   _
@@ -608,16 +601,13 @@ int generate_n_rosy_free(TriMesh &mesh, const int n, const double s, const doubl
     //dump_sparse_matrix(M, "dump.M.mat");
     //dump_sparse_matrix(A, "dump.A.mat");
     u = Eigen::VectorX<Comx>::Ones(A.rows());
-    int err = solve_inversed_power(A, M, u, 1e-6, 1000);
+    int err = solve_inversed_power(A, M, u, 1e-6, 8192);
     //if (err) return err;
 
     populate_solution(mesh, u);
 
     //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
-    std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
-
-    int si = calculate_singularities(mesh);
-    std::cout << "x_eular = " << si/(n*2) << std::endl;
+    //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
 
     removeProperty<Vh, int>   (mesh, _var_vid);
     removeProperty<Eh, double>(mesh, _var_etr);
@@ -647,18 +637,54 @@ int generate_n_rosy_curvature_aligned(TriMesh &mesh, const int n, const double s
 
     populate_solution(mesh, u);
 
-    //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
-    //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
-
-    int si = calculate_singularities(mesh);
-    std::cout << "x_eular = " << si/(n*2) << std::endl;
-
     removeProperty<Vh, int>   (mesh, _var_vid);
     removeProperty<Eh, double>(mesh, _var_etr);
     removeProperty<Fh, double>(mesh, _var_fkv);
 
     return err;
 }
+
+int calculate_n_rosy_singularities(TriMesh &mesh, const int n)
+{
+    auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
+    int sum_idx {};
+
+    for (auto face : mesh.faces())
+        mesh.status(face).set_selected(false);
+
+    for (auto face : mesh.faces()) if (!face.is_boundary())
+    {
+        auto hdge0 = face.halfedge(); // h_{12}
+        auto hdge1 = hdge0.next();    // h_{20}
+        auto hdge2 = hdge0.prev();    // h_{01}
+        const auto &z0 = v_u[hdge1.to()];
+        const auto &z1 = v_u[hdge2.to()];
+        const auto &z2 = v_u[hdge0.to()];
+        const double a  = mesh.calc_face_area(face);
+        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
+        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
+        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
+        const double tf = normalize_angle(calc_rescaled_curvature(mesh, face) * n); // Omega
+        const double w0 = normalize_angle(arg(z2/z1) - t0);
+        const double w1 = normalize_angle(arg(z0/z2) - t1);
+        const double w2 = normalize_angle(arg(z1/z0) - t2);
+        const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
+        const int idx = (int)round(ph); // index can only be -1, 0, 1
+        mesh.status(face).set_selected(idx != 0);
+        sum_idx += idx;
+    }
+
+    return sum_idx;
+}
+
+//inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
+//{
+//    const auto ex = mesh.calc_edge_vector(mesh.halfedge_handle(vh));
+//    const auto nz = mesh.calc_normal(vh).normalized();
+//    const auto nx = (ex - dot(ex,nz)*nz).normalized();
+//    const auto ny = cross(nz, nx).normalized();
+//    return nx*real(u) + ny*imag(u);
+//}
 
 void pull_back_vertex_space(TriMesh &mesh, const char *var_vvec, const int n)
 {
@@ -667,8 +693,93 @@ void pull_back_vertex_space(TriMesh &mesh, const char *var_vvec, const int n)
 
     for (auto vert : mesh.vertices())
     {
-        const auto z = e_i(arg(v_u[vert]) / n);
-        const auto d = pull_back(mesh, vert, z);
+        const auto ex = mesh.calc_edge_vector(vert.halfedge());
+        const auto nz = mesh.calc_normal(vert).normalized();
+        const auto nx = (ex - dot(ex,nz)*nz).normalized();
+        const auto ny = cross(nz, nx).normalized();
+        const auto u = e_i(arg(v_u[vert]) / n);
+        const auto d = nx*real(u) + ny*imag(u);
         v_v[vert] = d.normalized();
     }
+}
+
+void pull_back_face_space(TriMesh &mesh, const char *var_fvec, const int n)
+{
+    auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
+    auto f_v = getOrMakeProperty<Fh, Vec3>(mesh, var_fvec);
+
+    ///     2
+    ///    / \
+    /// 1 /   \ 0
+    ///  /     \
+    /// 0-------1
+    ///     2
+    for (auto face : mesh.faces())
+    {
+        auto hdge0 = face.halfedge();
+        auto hdge1 = hdge0.next();
+        auto hdge2 = hdge1.next();
+        auto vert0 = hdge1.to();
+        auto vert1 = hdge2.to();
+        auto vert2 = hdge0.to();
+        const double c0 = calc_corner_angle(mesh, hdge0) * n;
+        const double c1 = calc_corner_angle(mesh, hdge1) * n;
+        const double c2 = calc_corner_angle(mesh, hdge2) * n;
+        const double t0 = calc_rescaled_angle(mesh, hdge2) * n;
+        const double t1 = calc_rescaled_angle(mesh, hdge0) * n;
+        const double t2 = calc_rescaled_angle(mesh, hdge1) * n;
+        const auto z0 = e_i(arg(v_u[vert0]) - t0);
+        const auto z1 = e_i(arg(v_u[vert1]) - t1 + c0 + c2);
+        const auto z2 = e_i(arg(v_u[vert2]) - t2 - c1 - c2);
+        //std::cout << z0 << ", " << z1 << ", " << z2 << "\n";
+        const auto z  = (z0 + z1 + z2) / 3.;
+
+        const auto nz = mesh.calc_normal(face).normalized();
+        const auto nx = mesh.calc_edge_vector(hdge2).normalized();
+        const auto ny = cross(nz, nx).normalized();
+        const auto u = e_i(arg(z) / n);
+        const auto d = nx*real(u) + ny*imag(u);
+
+        f_v[face] = d.normalized();
+    }
+}
+
+inline Vec2d vt_to_uv(const TriMesh &mesh, const Fh &fh, const Vec3 &vb, const Vec3 &vt)
+{
+    auto b0 = vb.normalized();
+    auto b2 = mesh.calc_normal(fh).normalized();
+    auto b1 = cross(b2, b0).normalized();
+    return { dot(vt, b0), dot(vt, b1) };
+}
+
+int calculate_n_rosy_singularities(TriMesh &mesh, const char *var_fvec, const int n)
+{
+    auto f_v = getProperty<Fh, Vec3>(mesh, var_fvec);
+    int sum_idx {};
+
+    for (auto vert : mesh.vertices())
+        mesh.status(vert).set_selected(false);
+
+    for (auto vert : mesh.vertices()) if (!vert.is_boundary())
+    {
+        int mismatch {};
+
+        for (auto hdge : vert.outgoing_halfedges())
+        {
+            auto face0 = hdge.face();
+            auto face1 = hdge.opp().face();
+            const auto vb = mesh.calc_edge_vector(hdge);
+            const auto u0 = vt_to_uv(mesh, face0, vb, f_v[face0]);
+            const auto u1 = vt_to_uv(mesh, face1, vb, f_v[face1]);
+            const double dt = std::atan2(cross(u0, u1), dot(u0, u1)); // dt = [-180, 180)
+            const int m = (int)std::floor(dt / (kPi*2./n) + 0.5); // (dt - (-45)) / 90
+            mismatch += (m + n) % n;
+        }
+
+        mismatch %= n;
+        sum_idx += mismatch;
+        if (mismatch) mesh.status(vert).set_selected(true);
+    }
+
+    return sum_idx;
 }

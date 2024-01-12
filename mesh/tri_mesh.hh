@@ -2,28 +2,9 @@
 #define TRI_MESH_HH
 
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+#include "handle.hh"
 #include "property.hh"
-
-////////////////////////////////////////////////////////////////
-/// Basic types
-////////////////////////////////////////////////////////////////
-
-template <typename T, size_t N>
-using VecN = OpenMesh::VectorT<T, N>;
-
-using Vec2 = VecN<double, 2>;
-using Vec3 = VecN<double, 3>;
-using Vec4 = VecN<double, 4>;
-using Vec5 = VecN<double, 5>;
-using Vec6 = VecN<double, 6>;
-
-using Int2 = VecN<int, 2>;
-using Int3 = VecN<int, 3>;
-
-using Vh = OpenMesh::VertexHandle;
-using Fh = OpenMesh::FaceHandle;
-using Eh = OpenMesh::EdgeHandle;
-using Hh = OpenMesh::HalfedgeHandle;
+#include "geometry.hh"
 
 ////////////////////////////////////////////////////////////////
 /// Mesh

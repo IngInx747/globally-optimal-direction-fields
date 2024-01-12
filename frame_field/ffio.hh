@@ -7,7 +7,7 @@ int save_face_vector  (const TriMesh&, const char*, const char*, const double sc
 
 int save_vertex_vector(const TriMesh&, const char*, const char*, const double scale=1, const double offset=0);
 
-int save_face_vector  (const TriMesh&, const char*, const int n_rosy, const char *filename, const double scale=1, const double offset=0);
+int save_face_n_rosy  (const TriMesh&, const char*, const int n_rosy, const char *filename, const double scale=1, const double offset=0);
 
 int save_vertex_n_rosy(const TriMesh&, const char*, const int n_rosy, const char *filename, const double scale=1, const double offset=0);
 

@@ -9,8 +9,20 @@ static std::string mesh_filename {};
 static std::string mesh_prefix {};
 static std::string mesh_path {};
 
-static const char *var_fvecs[] { "face:vec0", "face:vec1", "face:vec2", "face:vec3", "face:vec4", "face:vec5" };
-static const char *var_vvecs[] { "vert:vec0", "vert:vec1", "vert:vec2", "vert:vec3", "vert:vec4", "vert:vec5" };
+static const char *var_fvecs[] { "face:vec0", "face:vec1", "face:vec2", "face:vec3" };
+static const char *var_vvecs[] { "vert:vec0", "vert:vec1", "vert:vec2", "vert:vec3" };
+
+static const char* getopt(const char **begin, const char **end, const char *option)
+{
+    const char **iter = std::find(begin, end, std::string { option });
+    if (iter != end && ++iter != end) return *iter;
+    return nullptr;
+}
+
+static bool is_opt(const char **begin, const char **end, const char *option)
+{
+    return std::find(begin, end, std::string { option }) != end;
+}
 
 static double get_average_edge_length(const TriMesh &mesh)
 {
@@ -75,7 +87,47 @@ int main(const int argc, const char **argv)
     { printf("Cannot open mesh: %s\n", mesh_filename.c_str()); return 1; }
 
     //test_random_cross_field(mesh);
-    test_global_optimal_cross_field(mesh);
+    //test_global_optimal_cross_field(mesh);
+
+    int n_rosy = 4;
+    double rosy_s = 0.;
+    double lambda = 0.;
+    int curv_align = 0;
+    const char *arg {};
+    int err {};
+
+    if ((arg = getopt(argv, argv + argc, "-n")) != nullptr) { n_rosy = atoi(arg); }
+    if ((arg = getopt(argv, argv + argc, "-s")) != nullptr) { rosy_s = atof(arg); }
+    if ((arg = getopt(argv, argv + argc, "-l")) != nullptr) { lambda = atof(arg); }
+    if (is_opt(argv, argv + argc, "-a")) { curv_align = 1; }
+
+    printf("ROSY: %d\n", n_rosy);
+    printf("s = %.1f\n", rosy_s);
+    printf("lambda = %.1f\n", lambda);
+    printf("Align? %s\n", curv_align ? "YES" : "NO");
+
+    // generate n-rosy complex
+    if (curv_align) err = generate_n_rosy_curvature_aligned(mesh, n_rosy, rosy_s, lambda);
+    else            err = generate_n_rosy_free(mesh, n_rosy, rosy_s, lambda);
+    if (err) { printf("err = %d\n", err); if (err != 2) return err; }
+
+    int si = calculate_n_rosy_singularities(mesh, n_rosy);
+    std::cout << "x_eular = " << si/(n_rosy*2) << std::endl;
+
+    // calculate one direction of the complex
+    //pull_back_vertex_space(mesh, var_vvecs[0], n_rosy);
+
+    pull_back_face_space(mesh, var_fvecs[0], n_rosy);
+    calculate_n_rosy_singularities(mesh, var_fvecs[0], n_rosy);
+
+    // save n-rosy cross field
+    double al = get_average_edge_length(mesh);
+    std::stringstream ss; ss << mesh_prefix << ".nrosy" << std::to_string(n_rosy);
+    //save_vertex_n_rosy(mesh, var_vvecs[0], n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
+    //save_selected_face_centroids(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-1);
+    //save_vertex_vector(mesh, var_vvecs[0], (mesh_prefix + ".vec0.obj").c_str(), al, al*1e-1);
+    save_face_n_rosy(mesh, var_fvecs[0], n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
+    save_selected_vertices(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-2);
 
     return 0;
 }

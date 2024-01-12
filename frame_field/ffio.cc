@@ -106,7 +106,7 @@ int save_vertex_vector(const TriMesh &mesh, const char *var_vec, const char *fil
         filename);
 }
 
-int save_face_vector(const TriMesh &mesh, const char *var_vec, const int n_rosy, const char *filename, const double scale, const double offset)
+int save_face_n_rosy(const TriMesh &mesh, const char *var_vec, const int n_rosy, const char *filename, const double scale, const double offset)
 {
     if (!hasProperty<Fh, Vec3>(mesh, var_vec)) return 1;
     auto f_v = getProperty<Fh, Vec3>(mesh, var_vec);
