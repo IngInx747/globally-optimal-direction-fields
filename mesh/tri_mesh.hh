@@ -54,27 +54,33 @@ inline T sync(const TriMesh &mesh, const Hh &hh, const T &val)
 /// Debug
 ////////////////////////////////////////////////////////////////
 
-inline void print_vert(const TriMesh &mesh, const Vh &vh)
+inline void print_handle(const TriMesh &mesh, const Vh &vh, const int offset = 0)
 {
-    printf("(%d)", vh.idx());
+    printf("(%d)", vh.idx() + offset);
 }
 
-inline void print_hdge(const TriMesh &mesh, const Hh &hh)
+inline void print_handle(const TriMesh &mesh, const Hh &hh, const int offset = 0)
 {
-    auto hdge = make_smart(hh, mesh);
-    printf("(%d, %d)", hdge.from().idx(), hdge.to().idx());
+    printf("(%d, %d)",
+        mesh.from_vertex_handle(hh).idx() + offset,
+        mesh.to_vertex_handle(hh).idx()   + offset);
 }
 
-inline void print_edge(const TriMesh &mesh, const Eh &eh)
+inline void print_handle(const TriMesh &mesh, const Eh &eh, const int offset = 0)
 {
-    auto edge = make_smart(eh, mesh);
-    printf("(%d, %d)", edge.v0().idx(), edge.v1().idx());
+    const auto hh = mesh.halfedge_handle(eh, 0);
+    printf("(%d, %d)",
+        mesh.from_vertex_handle(hh).idx() + offset,
+        mesh.to_vertex_handle(hh).idx()   + offset);
 }
 
-inline void print_face(const TriMesh &mesh, const Fh &fh)
+inline void print_handle(const TriMesh &mesh, const Fh &fh, const int offset = 0)
 {
-    auto hdge = make_smart(fh, mesh).halfedge();
-    printf("(%d, %d, %d)", hdge.from().idx(), hdge.to().idx(), hdge.next().to().idx());
+    const auto hh = mesh.halfedge_handle(fh);
+    printf("(%d, %d, %d)",
+        mesh.from_vertex_handle(hh).idx() + offset,
+        mesh.to_vertex_handle(hh).idx()   + offset,
+        mesh.to_vertex_handle(mesh.next_halfedge_handle(hh)).idx() + offset);
 }
 
 #endif
