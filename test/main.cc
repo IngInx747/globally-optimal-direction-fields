@@ -101,6 +101,9 @@ int main(const int argc, const char **argv)
     if ((arg = getopt(argv, argv + argc, "-l")) != nullptr) { lambda = atof(arg); }
     if (is_opt(argv, argv + argc, "-a")) { curv_align = 1; }
 
+    //if (curv_align && !(n_rosy == 4 || n_rosy == 2))
+    //{ printf("Curvature alignment only applies for N = 2 or 4\n"); curv_align = false; }
+
     printf("ROSY: %d\n", n_rosy);
     printf("s = %.1f\n", rosy_s);
     printf("lambda = %.1f\n", lambda);
