@@ -21,4 +21,11 @@ int solve_inversed_power(const Eigen::SparseMatrix<T>&, Eigen::VectorX<T>&, cons
 template <class T>
 int solve_inversed_power(const Eigen::SparseMatrix<T>&, const Eigen::SparseMatrix<T>&, Eigen::VectorX<T>&, const double tol, const int n_iter);
 
+template <class T>
+inline int solve_fixed_constraints_simplical_LDLT(
+    const Eigen::SparseMatrix<T> &A,
+    const Eigen::VectorXi        &C,
+    const Eigen::VectorX<T>      &y,
+          Eigen::VectorX<T>      &x);
+
 #endif

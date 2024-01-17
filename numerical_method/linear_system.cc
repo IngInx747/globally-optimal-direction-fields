@@ -257,3 +257,128 @@ int solve_inversed_power(
           Eigen::VectorX<std::complex<double>> &x,
     const double tol,
     const int n_iter);
+
+////////////////////////////////////////////////////////////////
+/// Constraint
+////////////////////////////////////////////////////////////////
+
+template <class T>
+inline int reduce_fixed_constraints(
+    const Eigen::SparseMatrix<T, Eigen::RowMajor> &A_in,
+    const Eigen::VectorX<T>                       &y_in,
+    const Eigen::VectorX<T>                       &x_in,
+    const Eigen::VectorXi                         &is_fixed,
+          Eigen::SparseMatrix<T>                  &A_out,
+          Eigen::VectorX<T>                       &y_out,
+          Eigen::VectorX<T>                       &x_out,
+          Eigen::VectorXi                         &indices)
+{
+    using RowIter = Eigen::SparseMatrix<T, Eigen::RowMajor>::InnerIterator;
+
+    indices.resize(y_in.size()); indices.setConstant(-1);
+    int nv {};
+
+    // reindex variables
+    for (int i = 0; i < y_in.size(); ++i)
+        if (!is_fixed(i)) indices(i) = nv++;
+
+    // reduced linear system
+    A_out.resize(nv, nv); A_out.setZero();
+    y_out.resize(nv);     y_out.setZero();
+    x_out.resize(nv);     x_out.setZero();
+
+    std::vector<Eigen::Triplet<T>> coef {};
+
+    for (int i = 0; i < A_in.outerSize(); ++i) if (!is_fixed(i))
+    {
+        const int id = indices(i);
+
+        y_out(id) = y_in(i);
+        x_out(id) = x_in(i);
+
+        for (RowIter iter(A_in, i); iter; ++iter)
+        {
+            const int j = (int)iter.col();
+            const int jd = indices(j);
+
+            if (!is_fixed(j))
+            {
+                coef.emplace_back(id, jd, A_in.coeff(i, j));
+            }
+            else
+            {
+                y_out(id) -= A_in.coeff(i, j) * x_in(j);
+            }
+        }
+    }
+
+    A_out.setFromTriplets(coef.begin(), coef.end()); coef.clear();
+
+    return nv;
+}
+
+template <class T>
+inline int reduce_fixed_constraints(
+    const Eigen::SparseMatrix<T> &A_in,
+    const Eigen::VectorX<T>      &y_in,
+    const Eigen::VectorX<T>      &x_in,
+    const Eigen::VectorXi        &is_fixed,
+          Eigen::SparseMatrix<T> &A_out,
+          Eigen::VectorX<T>      &y_out,
+          Eigen::VectorX<T>      &x_out,
+          Eigen::VectorXi        &indices)
+{
+    Eigen::SparseMatrix<T, Eigen::RowMajor> A_rm(A_in);
+    return reduce_fixed_constraints(A_rm, y_in, x_in, is_fixed, A_out, y_out, x_out, indices);
+}
+
+template <class T>
+inline int solve_fixed_constraints_sparse_LU(
+    const Eigen::SparseMatrix<T> &A,
+    const Eigen::VectorXi        &C,
+    const Eigen::VectorX<T>      &y,
+          Eigen::VectorX<T>      &x)
+{
+    Eigen::VectorXi I;
+    Eigen::VectorX<T> x1, y1;
+    Eigen::SparseMatrix<T> A1;
+
+    reduce_fixed_constraints(A, y, x, C, A1, y1, x1, I);
+
+    int err = solve_sparse_LU(A1, y1, x1);
+
+    // write back to the original array
+    for (int i = 0; i < x.size(); ++i)
+        if (!C(i)) x(i) = x1(I(i));
+
+    return err;
+}
+
+template <class T>
+inline int solve_fixed_constraints_simplical_LDLT(
+    const Eigen::SparseMatrix<T> &A,
+    const Eigen::VectorXi        &C,
+    const Eigen::VectorX<T>      &y,
+          Eigen::VectorX<T>      &x)
+{
+    Eigen::VectorXi I;
+    Eigen::VectorX<T> x1, y1;
+    Eigen::SparseMatrix<T> A1;
+
+    reduce_fixed_constraints(A, y, x, C, A1, y1, x1, I);
+
+    int err = solve_simplical_LDLT(A1, y1, x1);
+
+    // write back to the original array
+    for (int i = 0; i < x.size(); ++i)
+        if (!C(i)) x(i) = x1(I(i));
+
+    return err;
+}
+
+template
+int solve_fixed_constraints_simplical_LDLT(
+    const Eigen::SparseMatrix<std::complex<double>> &A,
+    const Eigen::VectorXi                           &C,
+    const Eigen::VectorX<std::complex<double>>      &y,
+          Eigen::VectorX<std::complex<double>>      &x);
