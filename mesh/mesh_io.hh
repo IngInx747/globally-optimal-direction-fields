@@ -1,10 +1,10 @@
 #ifndef MESH_IO_HH
 #define MESH_IO_HH
 
-#include "tri_mesh.hh"
+template <class Mesh>
+int read_mesh(Mesh&, const char*);
 
-int read_mesh(TriMesh&, const char*);
-
-int save_mesh(const TriMesh&, const char*);
+template <class Mesh>
+int save_mesh(const Mesh&, const char*);
 
 #endif

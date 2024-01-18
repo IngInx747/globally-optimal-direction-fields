@@ -27,12 +27,67 @@ inline std::string get_file_extension(const char *filename)
     return s.substr(found + 1);
 }
 
-inline bool is_file_extension(const char *filename, const char *extension)
+template <class Mesh>
+inline int read_mesh_builtin(Mesh &mesh, const char *filename)
 {
-    return get_file_extension(filename).compare(extension) == 0;
+    int err { IO_ERR_TYPE::NO_ERROR };
+
+    IO::Options opt;
+
+    opt += IO::Options::VertexTexCoord;
+    mesh.request_vertex_texcoords2D();
+
+    opt += IO::Options::VertexNormal;
+    mesh.request_vertex_normals();
+
+    opt += IO::Options::VertexColor;
+    mesh.request_vertex_colors();
+
+    opt += IO::Options::VertexNormal;
+    mesh.request_face_normals();
+
+    opt += IO::Options::VertexColor;
+    mesh.request_face_colors();
+
+    if (!IO::read_mesh(mesh, filename, opt)) err = IO_ERR_TYPE::INTERNAL;
+
+    if (!opt.vertex_has_texcoord()) mesh.release_vertex_texcoords2D();
+
+    if (!opt.vertex_has_normal()) mesh.release_face_normals();
+
+    if (!opt.vertex_has_color()) mesh.release_face_colors();
+
+    if (!opt.face_has_normal()) mesh.release_face_normals();
+
+    if (!opt.face_has_color()) mesh.release_face_colors();
+
+    return err;
 }
 
-static int read_mesh_detri2(TriMesh &mesh, const char *filename)
+template <class Mesh>
+inline int save_mesh_builtin(const Mesh &mesh, const char *filename)
+{
+    int err { IO_ERR_TYPE::NO_ERROR };
+
+    IO::Options opt;
+
+    if (mesh.has_vertex_texcoords2D()) opt += IO::Options::VertexTexCoord;
+
+    if (mesh.has_vertex_normals()) opt += IO::Options::VertexNormal;
+
+    if (mesh.has_vertex_colors()) opt += IO::Options::VertexColor;
+
+    if (mesh.has_face_normals()) opt += IO::Options::VertexNormal;
+
+    if (mesh.has_face_colors()) opt += IO::Options::VertexColor;
+
+    if (!IO::write_mesh(mesh, filename, opt, 17i64)) err = IO_ERR_TYPE::INTERNAL;
+
+    return err;
+}
+
+template <class Mesh>
+inline int read_mesh_detri2(Mesh &mesh, const char *filename)
 {
     constexpr size_t kInf = std::numeric_limits<std::streamsize>::max();
 
@@ -80,7 +135,7 @@ static int read_mesh_detri2(TriMesh &mesh, const char *filename)
                     in >> ids[j];
                     ids[j] -= 1;
                 }
-                std::vector<VertexHandle> vhs {
+                std::vector<Vh> vhs {
                     mesh.vertex_handle(ids[0]),
                     mesh.vertex_handle(ids[1]),
                     mesh.vertex_handle(ids[2])
@@ -118,6 +173,13 @@ static int read_mesh_detri2(TriMesh &mesh, const char *filename)
     return IO_ERR_TYPE::NO_ERROR;
 }
 
+template <class Mesh>
+inline int save_mesh_detri2(Mesh &mesh, const char *filename)
+{
+    return IO_ERR_TYPE::UNSUPPORTED_FORMAT;
+}
+
+template <>
 static int save_mesh_detri2(const TriMesh &mesh, const char *filename)
 {
     std::ofstream out(filename, std::ios::out);
@@ -160,25 +222,16 @@ static int save_mesh_detri2(const TriMesh &mesh, const char *filename)
     return IO_ERR_TYPE::NO_ERROR;
 }
 
-int read_mesh(TriMesh &mesh, const char *filename)
+template <class Mesh>
+int read_mesh(Mesh &mesh, const char *filename)
 {
     int err { IO_ERR_TYPE::NO_ERROR };
-    auto ext = get_file_extension(filename);
+
+    const auto ext = get_file_extension(filename);
 
     if (ext.compare("obj") == 0 || ext.compare("off") == 0)
     {
-        IO::Options opt;
-
-        opt += IO::Options::VertexTexCoord;
-        mesh.request_vertex_texcoords2D();
-
-        opt += IO::Options::FaceColor;
-        mesh.request_face_colors();
-
-        if (!IO::read_mesh(mesh, filename, opt)) err = IO_ERR_TYPE::INTERNAL;
-
-        if (!opt.vertex_has_texcoord()) mesh.release_vertex_texcoords2D();
-        if (!opt.face_has_color()) mesh.release_face_colors();
+        err = read_mesh_builtin(mesh, filename);
     }
     else if (ext.compare("mesh") == 0)
     {
@@ -189,24 +242,21 @@ int read_mesh(TriMesh &mesh, const char *filename)
         err = IO_ERR_TYPE::UNSUPPORTED_FORMAT;
     }
 
-    if (err != 0) fprintf(stderr, "read_mesh error %d: %s\n", err, __io_err_msg[err]);
+    if (err) fprintf(stderr, "read_mesh error %d: %s\n", err, __io_err_msg[err]);
+
     return err;
 }
 
-int save_mesh(const TriMesh &mesh, const char *filename)
+template <class Mesh>
+int save_mesh(const Mesh &mesh, const char *filename)
 {
-    int err {};
-    auto ext = get_file_extension(filename);
+    int err { IO_ERR_TYPE::NO_ERROR };
+
+    const auto ext = get_file_extension(filename);
 
     if (ext.compare("obj") == 0 || ext.compare("off") == 0)
     {
-        IO::Options opt;
-
-        if (mesh.has_face_colors()) opt += IO::Options::FaceColor;
-        //if (mesh.has_vertex_colors()) opt += IO::Options::VertexColor;
-        if (mesh.has_vertex_texcoords2D()) opt += IO::Options::VertexTexCoord;
-
-        if (!IO::write_mesh(mesh, filename, opt, 17i64)) err = IO_ERR_TYPE::INTERNAL;
+        err = save_mesh_builtin(mesh, filename);
     }
     else if (ext.compare("mesh") == 0)
     {
@@ -217,6 +267,13 @@ int save_mesh(const TriMesh &mesh, const char *filename)
         err = IO_ERR_TYPE::UNSUPPORTED_FORMAT;
     }
 
-    if (err != 0) fprintf(stderr, "save_mesh error %d: %s\n", err, __io_err_msg[err]);
+    if (err) fprintf(stderr, "save_mesh error %d: %s\n", err, __io_err_msg[err]);
+
     return err;
 }
+
+template
+int read_mesh(TriMesh&, const char*);
+
+template
+int save_mesh(const TriMesh&, const char*);

@@ -342,6 +342,15 @@ inline Comx M_II()
     return { 1 / 6., 0 };
 }
 
+/// As the halfedge of a vertex is always the boundary one in openmesh
+/// convention, we explicitly use the most clockwise halfedge instead
+/// which eases the calculation of the angle around a vertex.
+inline Hh anchor_halfedge(const TriMesh &mesh, const Vh &vh)
+{
+    const auto hh = mesh.halfedge_handle(vh);
+    return mesh.is_boundary(hh) ? mesh.ccw_rotated_halfedge_handle(hh) : hh;
+}
+
 inline double calc_corner_angle(const TriMesh &mesh, const Hh &hh)
 {
     auto hdge = make_smart(hh, mesh);
@@ -366,17 +375,18 @@ inline double calc_rescaled_ratio(const TriMesh &mesh, const Vh &vh)
 
 inline double calc_rescaled_angle(const TriMesh &mesh, const Hh &hh)
 {
-    auto vert = make_smart(hh, mesh).from();
     double s0 {}, s1 {}; bool is_met {};
+    auto vert = make_smart(hh, mesh).from();
+    auto hanc = make_smart(anchor_halfedge(mesh, vert), mesh);
 
-    auto hdge = vert.halfedge(); do
+    auto hdge = hanc; do
     {
         const double t = calc_corner_angle(mesh, hdge.next());
         if (hdge == hh) is_met = true;
         if (is_met) s1 += t;
         else        s0 += t;
     }
-    while ((hdge = hdge.prev().opp()) != vert.halfedge());
+    while ((hdge = hdge.prev().opp()) != hanc);
 
     const double s = vert.is_boundary() ? 1 : kPi*2. / (s0 + s1);
     return s0 * s;
@@ -409,10 +419,6 @@ inline double normalize_angle(double t)
 }
 
 static const char *_var_vid { "vert:index" };
-static const char *_var_fid { "face:index" };
-
-static const char *_var_etr { "edge:transport" };
-static const char *_var_fkv { "face:curvature" };
 static const char *_var_vso { "vert:solution"  };
 
 static int setup_indices(TriMesh &mesh)
@@ -426,6 +432,7 @@ static int setup_indices(TriMesh &mesh)
     return nv;
 }
 
+#if 0
 static int setup_connections(TriMesh &mesh, const int n)
 {
     auto e_t = getOrMakeProperty<Eh, double>(mesh, _var_etr);
@@ -440,7 +447,6 @@ static int setup_connections(TriMesh &mesh, const int n)
     return 0;
 }
 
-#if 0
 static int calculate_singularities_deprecated(TriMesh &mesh)
 {
     auto e_t = getProperty<Eh, double>(mesh, _var_etr);
@@ -487,11 +493,9 @@ static int calculate_singularities_deprecated(TriMesh &mesh)
 ///
 /// e_0 = e_{12},  e_1 = e_{20},  e_2 = e_{01}
 ///
-static int setup_mass_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &M)
+static int setup_mass_matrix(const TriMesh &mesh, const int n, Eigen::SparseMatrix<Comx> &M)
 {
     auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
-    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
-    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
     const int nv = (int)mesh.n_vertices();
 
     std::vector<Eigen::Triplet<Comx>> coef {};
@@ -505,10 +509,10 @@ static int setup_mass_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &M)
         const int i1 = v_i[hdge2.to()];
         const int i2 = v_i[hdge0.to()];
         const double a  = mesh.calc_face_area(face);
-        const double t0 = sync(mesh, hdge0, e_t[hdge0.edge()]); // rho_{12}
-        const double t1 = sync(mesh, hdge1, e_t[hdge1.edge()]); // rho_{20}
-        const double t2 = sync(mesh, hdge2, e_t[hdge2.edge()]); // rho_{01}
-        const double tf = f_k[face]; // Omega: bundle curvature
+        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
+        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
+        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
+        const double tf = calc_rescaled_curvature(mesh, face)  * n; // Omega: bundle curvature
         const auto m_ii = M_II();
         const auto m_jk = M_JK(tf);
         const auto r0 = conj(e_i(t0)); // r_{12}^H
@@ -531,11 +535,9 @@ static int setup_mass_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &M)
     return 0;
 }
 
-static int setup_energy_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &A, const double s)
+static int setup_energy_matrix(const TriMesh &mesh, const int n, Eigen::SparseMatrix<Comx> &A, const double s)
 {
     auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
-    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
-    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
     const int nv = (int)mesh.n_vertices();
 
     std::vector<Eigen::Triplet<Comx>> coef {};
@@ -549,10 +551,10 @@ static int setup_energy_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &A
         const int i1 = v_i[hdge2.to()];
         const int i2 = v_i[hdge0.to()];
         const double a  = mesh.calc_face_area(face);
-        const double t0 = sync(mesh, hdge0, e_t[hdge0.edge()]); // rho_{12}
-        const double t1 = sync(mesh, hdge1, e_t[hdge1.edge()]); // rho_{20}
-        const double t2 = sync(mesh, hdge2, e_t[hdge2.edge()]); // rho_{01}
-        const double tf = f_k[face]; // Omega: bundle curvature
+        const double t0 = calc_parallel_transport(mesh, hdge0) * n; // rho_{12}
+        const double t1 = calc_parallel_transport(mesh, hdge1) * n; // rho_{20}
+        const double t2 = calc_parallel_transport(mesh, hdge2) * n; // rho_{01}
+        const double tf = calc_rescaled_curvature(mesh, face)  * n; // Omega: bundle curvature
         const auto m_ii = M_II();
         const auto m_jk = M_JK(tf);
         const auto r0 = conj(e_i(t0)); // r_{12}^H
@@ -592,27 +594,97 @@ static int setup_energy_matrix(const TriMesh &mesh, Eigen::SparseMatrix<Comx> &A
     return 0;
 }
 
-static int setup_curvature_alignment(const TriMesh &mesh, Eigen::VectorX<Comx> &q)
+static int setup_curvature_alignment(const TriMesh &mesh, const int n, Eigen::VectorX<Comx> &b)
 {
-    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
-    auto e_t = getProperty<Eh, double>(mesh, _var_etr);
-    auto f_k = getProperty<Fh, double>(mesh, _var_fkv);
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
     const int nv = (int)mesh.n_vertices();
 
-    q.resize(nv); q.setZero();
+    b.resize(nv); b.setZero();
 
     for (auto vert : mesh.vertices())
     {
         for (auto hdge : vert.outgoing_halfedges())
+        if (!hdge.edge().is_boundary())
+        if (!hdge.edge().selected())
         {
             const double t = calc_rescaled_angle(mesh, hdge);
             const double td = mesh.calc_dihedral_angle(hdge);
             const double l = mesh.calc_edge_length(hdge);
-            q(v_i[vert]) += e_i(t*2.) * -td * l;
+            b(v_i[vert]) += e_i(t*2.) * -td * l;
         }
     }
 
+    if (n == 4) b = b.array() * b.array(); // b_i = b_i^2
+
     return 0;
+}
+
+inline int valence_sharp(const TriMesh &mesh, const Vh &vh)
+{
+    int nl {};
+
+    for (auto edge : mesh.ve_range(vh))
+        if (edge.is_boundary() ||
+            edge.selected()) ++nl;
+
+    return nl;
+}
+
+inline double calc_average_rescaled_sharp_angle(const TriMesh &mesh, const Vh &vh)
+{
+    double avg_theta {};
+    int nl {};
+
+    for (auto hdge : mesh.voh_range(vh))
+    if (hdge.edge().is_boundary() ||
+        hdge.edge().selected())
+    {
+        avg_theta += calc_rescaled_angle(mesh, hdge);
+        ++nl;
+    }
+
+    return avg_theta / (double)nl;
+}
+
+inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &vh)
+{
+    auto hh = anchor_halfedge(mesh, vh);
+    double max_dha {};
+
+    for (auto hdge : mesh.voh_range(vh))
+    if (hdge.edge().is_boundary() ||
+        hdge.edge().selected())
+    {
+        double dha = abs(mesh.calc_dihedral_angle(hdge));
+        if (max_dha < dha) { max_dha = dha; hh = hdge; }
+    }
+
+    return calc_rescaled_angle(mesh, hh);
+}
+
+static int setup_fixed_boundary(TriMesh &mesh, const int n, Eigen::VectorX<Comx> &u, Eigen::VectorXi &C)
+{
+    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    const int nv = (int)mesh.n_vertices();
+    int nc {};
+
+    u.resize(nv); u.setZero();
+    C.resize(nv); C.setZero();
+
+    for (auto vert : mesh.vertices())
+    {
+        int nl = valence_sharp(mesh, vert);
+        if (!nl) continue;
+
+        //if (nl <= 2) u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
+        //else         u(v_i[vert]) = e_i(calc_one_of_rescaled_sharp_angles(mesh, vert) * n);
+        u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
+
+        C(v_i[vert]) = 1;
+        ++nc;
+    }
+
+    return nc;
 }
 
 static void populate_solution(TriMesh &mesh, const Eigen::VectorX<Comx> &u)
@@ -630,53 +702,79 @@ int generate_n_rosy_free(TriMesh &mesh, const int n, const double s, const doubl
 
     csinits();
     setup_indices(mesh);
-    setup_connections(mesh, n);
-    setup_mass_matrix(mesh, M);
-    setup_energy_matrix(mesh, A, s);
+    setup_mass_matrix(mesh, n, M);
+    setup_energy_matrix(mesh, n, A, s);
 
     A += M*(-lambda + kEps);
-    //dump_sparse_matrix(M, "dump.M.mat");
-    //dump_sparse_matrix(A, "dump.A.mat");
     u = Eigen::VectorX<Comx>::Ones(A.rows());
     int err = solve_inversed_power(A, M, u, 1e-6, 8192);
-    //if (err) return err;
 
     populate_solution(mesh, u);
 
     //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
     //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
 
-    removeProperty<Vh, int>   (mesh, _var_vid);
-    removeProperty<Eh, double>(mesh, _var_etr);
-    removeProperty<Fh, double>(mesh, _var_fkv);
+    removeProperty<Vh, int>(mesh, _var_vid);
 
     return err;
 }
 
+#if 0
 int generate_n_rosy_curvature_aligned(TriMesh &mesh, const int n, const double s, const double lambda)
 {
     constexpr double kEps = 1e-8;
     Eigen::SparseMatrix<Comx> M, A;
-    Eigen::VectorX<Comx> u, q;
+    Eigen::VectorX<Comx> u, b;
 
     csinits();
     setup_indices(mesh);
-    setup_connections(mesh, n);
-    setup_mass_matrix(mesh, M);
-    setup_energy_matrix(mesh, A, s);
-    setup_curvature_alignment(mesh, q);
+    setup_mass_matrix(mesh, n, M);
+    setup_energy_matrix(mesh, n, A, s);
 
-    if (n == 4) q = q.array() * q.array(); // q_i = q_i^2
-    q = M*q / sqrt((q.conjugate()*M*q).norm());
+    setup_curvature_alignment(mesh, n, b);
+    const double b2 = (b.conjugate().transpose()*M*b).norm();
+    if (b2 > kEps) b = M*b / sqrt(b2);
+
     A += M*(-lambda + kEps);
 
-    int err = solve_simplical_LDLT(A, q, u);
+    int err = solve_simplical_LDLT(A, b, u);
 
     populate_solution(mesh, u);
 
     removeProperty<Vh, int>   (mesh, _var_vid);
-    removeProperty<Eh, double>(mesh, _var_etr);
-    removeProperty<Fh, double>(mesh, _var_fkv);
+
+    return err;
+}
+#endif
+
+int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const double lambda)
+{
+    constexpr double kEps = 1e-8;
+    Eigen::SparseMatrix<Comx> M, A;
+    Eigen::VectorX<Comx> u, b;
+    Eigen::VectorXi C;
+    int err {};
+
+    csinits();
+    setup_indices(mesh);
+    setup_mass_matrix(mesh, n, M);
+    setup_energy_matrix(mesh, n, A, s);
+    A += M*(-lambda + kEps);
+
+    // prescribed directions as fixed conditions
+    int nc = setup_fixed_boundary(mesh, n, u, C);
+
+    // curvatures as guidance of the solution
+    setup_curvature_alignment(mesh, n, b);
+    const double b2 = (b.conjugate().transpose()*M*b).norm();
+    if (b2 > kEps) b = M*b / sqrt(b2);
+
+    if (nc) err = solve_fixed_constraints_simplical_LDLT(A, C, b, u);
+    else    err = solve_simplical_LDLT(A, b, u);
+
+    populate_solution(mesh, u);
+
+    removeProperty<Vh, int>(mesh, _var_vid);
 
     return err;
 }
@@ -730,7 +828,7 @@ void pull_back_vertex_space(TriMesh &mesh, const char *var_vvec, const int n)
 
     for (auto vert : mesh.vertices())
     {
-        const auto ex = mesh.calc_edge_vector(vert.halfedge());
+        const auto ex = mesh.calc_edge_vector(anchor_halfedge(mesh, vert));
         const auto nz = mesh.calc_normal(vert).normalized();
         const auto nx = (ex - dot(ex,nz)*nz).normalized();
         const auto ny = cross(nz, nx).normalized();

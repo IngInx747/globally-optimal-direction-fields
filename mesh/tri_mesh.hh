@@ -2,35 +2,19 @@
 #define TRI_MESH_HH
 
 #include <OpenMesh/Core/Mesh/TriMesh_ArrayKernelT.hh>
+#include <OpenMesh/Core/Mesh/Casts.hh>
 #include "handle.hh"
 #include "property.hh"
 #include "geometry.hh"
+#include "traits.hh"
 
 ////////////////////////////////////////////////////////////////
 /// Mesh
 ////////////////////////////////////////////////////////////////
 
-struct TriMeshTraits : public OpenMesh::DefaultTraitsDouble
-{
-    // Default types
-    typedef Vec2 TexCoord2D;
-    typedef Vec3 TexCoord3D;
+//struct TriMesh : public OpenMesh::TriMesh_ArrayKernelT<TriMeshTraits> {};
 
-    // Default attributes
-    VertexAttributes   (OpenMesh::Attributes::Status);
-    FaceAttributes     (OpenMesh::Attributes::Status);
-    EdgeAttributes     (OpenMesh::Attributes::Status);
-    HalfedgeAttributes (OpenMesh::Attributes::Status);
-
-    // Customized attributes
-    VertexTraits   {};
-    FaceTraits     {};
-    EdgeTraits     {};
-    HalfedgeTraits {};
-};
-
-struct TriMesh : public OpenMesh::TriMesh_ArrayKernelT<TriMeshTraits>
-{};
+using TriMesh = OpenMesh::TriMesh_ArrayKernelT<MeshTraits>;
 
 ////////////////////////////////////////////////////////////////
 /// Topology
@@ -39,8 +23,7 @@ struct TriMesh : public OpenMesh::TriMesh_ArrayKernelT<TriMeshTraits>
 // Tell if a halfedge is of the same orientation as its associated edge
 inline bool is_sync(const TriMesh &mesh, const Hh &hh)
 {
-    auto hdge = make_smart(hh, mesh);
-    return hdge.edge().v1() == hdge.to();
+    return mesh.halfedge_handle(mesh.edge_handle(hh), 0) == hh;
 }
 
 // Represent an edge-based value with respect of halfedge

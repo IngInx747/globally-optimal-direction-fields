@@ -5,7 +5,7 @@
 
 int generate_n_rosy_free(TriMesh&, const int n, const double s, const double lambda);
 
-int generate_n_rosy_curvature_aligned(TriMesh&, const int n, const double s, const double lambda);
+int generate_n_rosy_aligned(TriMesh&, const int n, const double s, const double lambda);
 
 int calculate_n_rosy_singularities(TriMesh&, const int n); // singularity in face
 
