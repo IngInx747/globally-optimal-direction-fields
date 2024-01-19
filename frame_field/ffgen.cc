@@ -604,8 +604,6 @@ static int setup_curvature_alignment(const TriMesh &mesh, const int n, Eigen::Ve
     for (auto vert : mesh.vertices())
     {
         for (auto hdge : vert.outgoing_halfedges())
-        if (!hdge.edge().is_boundary())
-        if (!hdge.edge().selected())
         {
             const double t = calc_rescaled_angle(mesh, hdge);
             const double td = mesh.calc_dihedral_angle(hdge);
@@ -619,25 +617,12 @@ static int setup_curvature_alignment(const TriMesh &mesh, const int n, Eigen::Ve
     return 0;
 }
 
-inline int valence_sharp(const TriMesh &mesh, const Vh &vh)
-{
-    int nl {};
-
-    for (auto edge : mesh.ve_range(vh))
-        if (edge.is_boundary() ||
-            edge.selected()) ++nl;
-
-    return nl;
-}
-
 inline double calc_average_rescaled_sharp_angle(const TriMesh &mesh, const Vh &vh)
 {
     double avg_theta {};
     int nl {};
 
-    for (auto hdge : mesh.voh_range(vh))
-    if (hdge.edge().is_boundary() ||
-        hdge.edge().selected())
+    for (auto hdge : mesh.voh_range(vh)) if (hdge.edge().selected())
     {
         avg_theta += calc_rescaled_angle(mesh, hdge);
         ++nl;
@@ -646,14 +631,13 @@ inline double calc_average_rescaled_sharp_angle(const TriMesh &mesh, const Vh &v
     return avg_theta / (double)nl;
 }
 
+#if 0
 inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &vh)
 {
     auto hh = anchor_halfedge(mesh, vh);
     double max_dha {};
 
-    for (auto hdge : mesh.voh_range(vh))
-    if (hdge.edge().is_boundary() ||
-        hdge.edge().selected())
+    for (auto hdge : mesh.voh_range(vh)) if (hdge.edge().selected())
     {
         double dha = abs(mesh.calc_dihedral_angle(hdge));
         if (max_dha < dha) { max_dha = dha; hh = hdge; }
@@ -661,8 +645,9 @@ inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &v
 
     return calc_rescaled_angle(mesh, hh);
 }
+#endif
 
-static int setup_fixed_boundary(TriMesh &mesh, const int n, Eigen::VectorX<Comx> &u, Eigen::VectorXi &C)
+static int setup_fixed_boundary(const TriMesh &mesh, const int n, Eigen::VectorX<Comx> &u, Eigen::VectorXi &C)
 {
     auto v_i = getProperty<Vh, int>(mesh, _var_vid);
     const int nv = (int)mesh.n_vertices();
@@ -673,15 +658,12 @@ static int setup_fixed_boundary(TriMesh &mesh, const int n, Eigen::VectorX<Comx>
 
     for (auto vert : mesh.vertices())
     {
-        int nl = valence_sharp(mesh, vert);
-        if (!nl) continue;
-
-        //if (nl <= 2) u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
-        //else         u(v_i[vert]) = e_i(calc_one_of_rescaled_sharp_angles(mesh, vert) * n);
-        u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
-
-        C(v_i[vert]) = 1;
-        ++nc;
+        if (vert.selected())
+        {
+            u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
+            C(v_i[vert]) = 1;
+            ++nc;
+        }
     }
 
     return nc;
