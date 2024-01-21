@@ -861,7 +861,7 @@ void pull_back_face_space(TriMesh &mesh, const char *var_fvec, const int n)
     }
 }
 
-inline Vec2d vt_to_uv(const TriMesh &mesh, const Fh &fh, const Vec3 &vb, const Vec3 &vt)
+inline Vec2 vt_to_uv(const TriMesh &mesh, const Fh &fh, const Vec3 &vb, const Vec3 &vt)
 {
     auto b0 = vb.normalized();
     auto b2 = mesh.calc_normal(fh).normalized();
@@ -869,36 +869,41 @@ inline Vec2d vt_to_uv(const TriMesh &mesh, const Fh &fh, const Vec3 &vb, const V
     return { dot(vt, b0), dot(vt, b1) };
 }
 
+inline int calc_mismatch(const Vec2 &u0, const Vec2 &u1, const int n)
+{
+    const double dt = atan2(cross(u0, u1), dot(u0, u1)); // dt = [-180, 180)
+    const int m = (int)floor(dt / (kPi*2./n) + 0.5); // (dt - (-45)) / 90
+    return (m + n) % n;
+}
+
 /// TODO: singularities calculation of 1-ROSY(vector) needs its own way
 
 int calculate_n_rosy_singularities(TriMesh &mesh, const char *var_fvec, const int n)
 {
     auto f_v = getProperty<Fh, Vec3>(mesh, var_fvec);
-    int sum_idx {};
+    int sum_mism_index {};
 
     for (auto vert : mesh.vertices())
         mesh.status(vert).set_selected(false);
 
     for (auto vert : mesh.vertices()) if (!vert.is_boundary())
     {
-        int mismatch {};
+        int m {};
 
         for (auto hdge : vert.outgoing_halfedges())
         {
-            auto face0 = hdge.face();
-            auto face1 = hdge.opp().face();
+            auto face0 = hdge.opp().face();
+            auto face1 = hdge.face();
             const auto vb = mesh.calc_edge_vector(hdge);
             const auto u0 = vt_to_uv(mesh, face0, vb, f_v[face0]);
             const auto u1 = vt_to_uv(mesh, face1, vb, f_v[face1]);
-            const double dt = std::atan2(cross(u0, u1), dot(u0, u1)); // dt = [-180, 180)
-            const int m = (int)std::floor(dt / (kPi*2./n) + 0.5); // (dt - (-45)) / 90
-            mismatch += (m + n) % n;
+            m += calc_mismatch(u0, u1, n);
         }
 
-        mismatch %= n;
-        sum_idx += mismatch;
-        if (mismatch) mesh.status(vert).set_selected(true);
+        m = ((m % n) + n) % n;
+        sum_mism_index += m;
+        if (m) mesh.status(vert).set_selected(true);
     }
 
-    return sum_idx;
+    return sum_mism_index;
 }
