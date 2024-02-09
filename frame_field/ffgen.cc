@@ -418,12 +418,11 @@ inline double normalize_angle(double t)
     return (t>=kPi) ? (t - kPi*2.) : (t<-kPi) ? (t + kPi*2.) : t; // [-pi, pi)
 }
 
-static const char *_var_vid { "vert:index" };
-static const char *_var_vso { "vert:solution"  };
+static const char *_var_vso { "vert:GODF:solution" };
 
 static int setup_indices(TriMesh &mesh)
 {
-    auto v_i = getOrMakeProperty<Vh, int>(mesh, _var_vid);
+    auto v_i = getOrMakeProperty<Vh, int>(mesh, var_v_index());
     int nv {};
 
     for (auto vert : mesh.vertices())
@@ -495,7 +494,7 @@ static int calculate_singularities_deprecated(TriMesh &mesh)
 ///
 static int setup_mass_matrix(const TriMesh &mesh, const int n, Eigen::SparseMatrix<Comx> &M)
 {
-    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>(mesh, var_v_index());
     const int nv = (int)mesh.n_vertices();
 
     std::vector<Eigen::Triplet<Comx>> coef {};
@@ -537,7 +536,7 @@ static int setup_mass_matrix(const TriMesh &mesh, const int n, Eigen::SparseMatr
 
 static int setup_energy_matrix(const TriMesh &mesh, const int n, Eigen::SparseMatrix<Comx> &A, const double s)
 {
-    auto v_i = getProperty<Vh, int>   (mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>(mesh, var_v_index());
     const int nv = (int)mesh.n_vertices();
 
     std::vector<Eigen::Triplet<Comx>> coef {};
@@ -596,7 +595,7 @@ static int setup_energy_matrix(const TriMesh &mesh, const int n, Eigen::SparseMa
 
 static int setup_curvature_alignment(const TriMesh &mesh, const int n, Eigen::VectorX<Comx> &b)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>(mesh, var_v_index());
     const int nv = (int)mesh.n_vertices();
 
     b.resize(nv); b.setZero();
@@ -649,7 +648,7 @@ inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &v
 
 static int setup_fixed_boundary(const TriMesh &mesh, const int n, Eigen::VectorX<Comx> &u, Eigen::VectorXi &C)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>(mesh, var_v_index());
     const int nv = (int)mesh.n_vertices();
     int nc {};
 
@@ -671,7 +670,7 @@ static int setup_fixed_boundary(const TriMesh &mesh, const int n, Eigen::VectorX
 
 static void populate_solution(TriMesh &mesh, const Eigen::VectorX<Comx> &u)
 {
-    auto v_i = getProperty<Vh, int>(mesh, _var_vid);
+    auto v_i = getProperty<Vh, int>(mesh, var_v_index());
     auto v_u = getOrMakeProperty<Vh, Comx>(mesh, _var_vso);
     for (auto vert : mesh.vertices()) v_u[vert] = u(v_i[vert]);
 }
@@ -695,8 +694,6 @@ int generate_n_rosy_free(TriMesh &mesh, const int n, const double s, const doubl
 
     //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
     //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
-
-    removeProperty<Vh, int>(mesh, _var_vid);
 
     return err;
 }
@@ -755,8 +752,6 @@ int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const do
     else    err = solve_simplical_LDLT(A, b, u);
 
     populate_solution(mesh, u);
-
-    removeProperty<Vh, int>(mesh, _var_vid);
 
     return err;
 }
