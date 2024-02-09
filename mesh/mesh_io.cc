@@ -1,7 +1,7 @@
 #include <string>
 #include <fstream>
 #include <OpenMesh/Core/IO/MeshIO.hh>
-#include "tri_mesh.hh"
+#include "mesh.hh"
 
 using namespace OpenMesh;
 
@@ -25,6 +25,41 @@ inline std::string get_file_extension(const char *filename)
     std::string s { filename };
     auto found = s.find_last_of(".");
     return s.substr(found + 1);
+}
+
+int save_obj(
+    const double *vs, const int nv,
+    const int    *fs, const int nf,
+    const int    *es, const int ne,
+    const char   *filename,
+    const std::streamsize prec = 17i64)
+{
+    std::ofstream out(filename, std::ios::out);
+    if (!out) return out.bad();
+
+    out << std::fixed << std::setprecision(prec);
+
+    for (int i = 0; i < nv; ++i)
+        out << "v "
+            << vs[i*3 + 0] << " "
+            << vs[i*3 + 1] << " "
+            << vs[i*3 + 2] << " "
+            << "\n";
+
+    for (int i = 0; i < nf; ++i)
+        out << "f "
+            << fs[i*3 + 0] << " "
+            << fs[i*3 + 1] << " "
+            << fs[i*3 + 2] << " "
+            << "\n";
+
+    for (int i = 0; i < ne; ++i)
+        out << "l "
+            << es[i*2 + 0] << " "
+            << es[i*2 + 1] << " "
+            << "\n";
+
+    return 0;
 }
 
 template <class Mesh>
@@ -167,7 +202,7 @@ inline int read_mesh_detri2(Mesh &mesh, const char *filename)
         int i0 = std::get<0>(vid);
         int i1 = std::get<1>(vid);
         auto hdge = mesh.find_halfedge(mesh.vertex_handle(i0), mesh.vertex_handle(i1));
-        if (hdge.is_valid()) mesh.status(hdge.edge()).set_selected(true);
+        if (hdge.is_valid()) set_marked(mesh, hdge.edge(), true);
     }
 
     return IO_ERR_TYPE::NO_ERROR;
@@ -205,12 +240,12 @@ static int save_mesh_detri2(const TriMesh &mesh, const char *filename)
     }
 
     int ne {};
-    for (auto edge : mesh.edges()) if (edge.selected()) ++ne;
+    for (auto edge : mesh.edges()) if (is_marked(mesh, edge)) ++ne;
 
     out << "Edges\n" << ne << "\n";
     for (auto edge : mesh.edges())
     {
-        if (edge.selected())
+        if (is_marked(mesh, edge))
         {
             auto vert0 = edge.v0(), vert1 = edge.v1();
             out << vert0.idx() + 1 << " " << vert1.idx() + 1 << " -1\n";
@@ -277,3 +312,57 @@ int read_mesh(TriMesh&, const char*);
 
 template
 int save_mesh(const TriMesh&, const char*);
+
+template <class MeshT>
+inline int save_marked_face_centroids(const MeshT &mesh, const char *filename, const double offset)
+{
+    std::vector<Vec3> ps {};
+    int np {};
+
+    for (const auto face : mesh.faces()) if (is_marked(mesh, face))
+    {
+        const auto p = mesh.calc_face_centroid(face);
+        const auto n = mesh.calc_normal(face) * offset;
+        ps.push_back(p + n);
+        ++np;
+    }
+
+    return save_obj(
+        (const double*)ps.data(), (const int)ps.size(),
+        nullptr,                  0,
+        nullptr,                  0,
+        filename);
+}
+
+template
+int save_marked_face_centroids(const TriMesh&, const char*, const double);
+
+template
+int save_marked_face_centroids(const PolyMesh&, const char*, const double);
+
+template <class MeshT>
+int save_marked_vertices(const MeshT &mesh, const char *filename, const double offset)
+{
+    std::vector<Vec3> ps {};
+    int np {};
+
+    for (const auto vert : mesh.vertices()) if (is_marked(mesh, vert))
+    {
+        const auto p = mesh.point(vert);
+        const auto n = mesh.calc_normal(vert) * offset;
+        ps.push_back(p + n);
+        ++np;
+    }
+
+    return save_obj(
+        (const double*)ps.data(), (const int)ps.size(),
+        nullptr,                  0,
+        nullptr,                  0,
+        filename);
+}
+
+template
+int save_marked_vertices(const TriMesh&, const char*, const double);
+
+template
+int save_marked_vertices(const PolyMesh&, const char*, const double);

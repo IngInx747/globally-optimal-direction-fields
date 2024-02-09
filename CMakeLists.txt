@@ -12,6 +12,6 @@ endif ()
 # we add the sub-directories that we want CMake to scan
 add_subdirectory(3rdparty)
 add_subdirectory(mesh)
-add_subdirectory(numerical_method)
+add_subdirectory(numeric)
 add_subdirectory(frame_field)
 add_subdirectory(test)

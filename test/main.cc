@@ -1,4 +1,4 @@
-#include "tri_mesh.hh"
+#include "mesh.hh"
 #include "mesh_io.hh"
 #include "ffgen.hh"
 #include "ffio.hh"
@@ -9,8 +9,8 @@ static std::string mesh_filename {};
 static std::string mesh_prefix {};
 static std::string mesh_path {};
 
-static const char *var_fvecs[] { "face:vec0", "face:vec1", "face:vec2", "face:vec3" };
-static const char *var_vvecs[] { "vert:vec0", "vert:vec1", "vert:vec2", "vert:vec3" };
+static const char *_var_fvec { "face:vec" };
+static const char *_var_vvec { "vert:vec" };
 
 static const char* getopt(const char **begin, const char **end, const char *option)
 {
@@ -36,14 +36,14 @@ inline bool is_good_to_fix(const TriMesh &mesh, const Vh &vh, const double da)
 {
     int nl {};
     for (auto edge : mesh.ve_range(vh))
-        if (edge.selected()) ++nl;
+        if (is_marked(mesh, edge)) ++nl;
 
     if (nl == 1) return true;
 
     if (nl == 2)
     {
         Vec3 de[2]; int ne {};
-        for (auto edge : mesh.ve_range(vh)) if (edge.selected())
+        for (auto edge : mesh.ve_range(vh)) if (is_marked(mesh, edge))
             de[ne++] = mesh.calc_edge_vector(edge).normalized();
         // check if the feature line is too much bended
         return abs(dot(de[0], de[1])) >= cos(da);
@@ -66,36 +66,6 @@ static void generate_random_cross_field(TriMesh &mesh, const char *var_vec0, con
     }
 }
 
-static void test_random_cross_field(TriMesh &mesh)
-{
-    generate_random_cross_field(mesh, var_fvecs[0], var_fvecs[1]);
-    double al = get_average_edge_length(mesh);
-    save_face_vector(mesh, var_fvecs[0], (mesh_prefix + ".vec0.obj").c_str(), al, al*1e-1);
-    save_face_vector(mesh, var_fvecs[1], (mesh_prefix + ".vec1.obj").c_str(), al, al*1e-1);
-}
-
-static void test_global_optimal_cross_field(TriMesh &mesh)
-{
-    const int n = 4;
-    const double s = 0.;
-    const double lambda = 0.;
-    // generate n-rosy complex
-    //int err = generate_n_rosy_free(mesh, n, s, lambda);
-    //int err = generate_n_rosy_curvature_aligned(mesh, n, s, lambda);
-    int err = generate_n_rosy_aligned(mesh, n, s, lambda);
-    if (err) { printf("err = %d\n", err); if (err != 2) return; }
-    // find singularities
-    int si = calculate_n_rosy_singularities(mesh, n);
-    std::cout << "x_eular = " << si/(n*2) << std::endl;
-    // calculate one direction of the complex
-    pull_back_vertex_space(mesh, var_vvecs[0], n);
-    // save n-rosy cross field
-    double al = get_average_edge_length(mesh);
-    std::stringstream ss; ss << mesh_prefix << ".nrosy" << std::to_string(n);
-    save_vertex_n_rosy(mesh, var_vvecs[0], n, (ss.str() + ".obj").c_str(), al,  al*1e-1);
-    save_selected_face_centroids(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-1);
-}
-
 int main(const int argc, const char **argv)
 {
     if (argc < 2) return 1;
@@ -108,9 +78,6 @@ int main(const int argc, const char **argv)
 
     if (read_mesh(mesh, mesh_filename.c_str()))
     { printf("Cannot open mesh: %s\n", mesh_filename.c_str()); return 1; }
-
-    //test_random_cross_field(mesh); return 0;
-    //test_global_optimal_cross_field(mesh); return 0;
 
     int n_rosy = 4;
     double rosy_s = 0.;
@@ -141,28 +108,28 @@ int main(const int argc, const char **argv)
     if (alignment)
     {
         for (auto edge : mesh.edges()) if (edge.is_boundary())
-            mesh.status(edge).set_selected(true);
+            set_marked(mesh, edge, true);
 
         if (sharp_dihedral_angle > 0)
         {
             printf("Sharp dihedral angle: %.1f\n", sharp_dihedral_angle);
             for (auto edge : mesh.edges())
                 if (abs(mesh.calc_dihedral_angle(edge)) > radian(sharp_dihedral_angle))
-                    mesh.status(edge).set_selected(true);
+                    set_marked(mesh, edge, true);
         }
     }
 
     // mark fixed vertices
     if (alignment)
     {
-        for (auto hdge : mesh.halfedges()) if (hdge.edge().selected())
-            mesh.status(hdge.to()).set_selected(true);
+        for (auto hdge : mesh.halfedges()) if (is_marked(mesh, hdge.edge()))
+            set_marked(mesh, hdge.to(), true);
 
         // remove bended feature vertices
         printf("Maximum bending angle: %.1f\n", max_bending_angle);
-        for (auto vert : mesh.vertices()) if (vert.selected())
+        for (auto vert : mesh.vertices()) if (is_marked(mesh, vert))
             if (!is_good_to_fix(mesh, vert, radian(max_bending_angle)))
-                mesh.status(vert).set_selected(false);
+                set_marked(mesh, vert, false);
     }
 
     // generate n-rosy complex
@@ -173,27 +140,31 @@ int main(const int argc, const char **argv)
     int si = calculate_n_rosy_singularities(mesh, n_rosy);
     std::cout << "x_eular = " << si/(n_rosy*2) << std::endl;
 
-//#define MAKE_VEC_ON_VERTEX
+//#define FF_ON_VERTEX
 
     // calculate one direction of the complex
-#ifdef MAKE_VEC_ON_VERTEX
-    pull_back_vertex_space(mesh, var_vvecs[0], n_rosy);
+#ifdef FF_ON_VERTEX
+    pull_back_vertex_space(mesh, _var_vvec, n_rosy);
 #else
-    pull_back_face_space(mesh, var_fvecs[0], n_rosy);
-    calculate_n_rosy_singularities(mesh, var_fvecs[0], n_rosy);
+    pull_back_face_space(mesh, _var_fvec, n_rosy);
+    calculate_n_rosy_singularities(mesh, _var_fvec, n_rosy);
 #endif
 
     double al = get_average_edge_length(mesh);
     std::stringstream ss; ss << mesh_prefix << ".nrosy" << std::to_string(n_rosy);
 
     // save n-rosy cross field
-#ifdef MAKE_VEC_ON_VERTEX
-    save_vertex_n_rosy(mesh, var_vvecs[0], n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
-    save_selected_face_centroids(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-1);
+#ifdef FF_ON_VERTEX
+    dump_vertex_n_rosy(mesh, _var_vvec, n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
+    save_marked_face_centroids(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-1);
 #else
-    save_face_n_rosy(mesh, var_fvecs[0], n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
-    save_selected_vertices(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-2);
+    dump_face_n_rosy(mesh, _var_fvec, n_rosy, (ss.str() + ".obj").c_str(), al, al*1e-1);
+    save_marked_vertices(mesh, (ss.str() + ".singularity.obj").c_str(), al*1e-2);
 #endif
+
+    save_face_vector(mesh, _var_fvec, ss.str().c_str());
+
+    release_n_rosy(mesh);
 
     return 0;
 }

@@ -1,5 +1,5 @@
 #include <complex>
-#include "tri_mesh.hh"
+#include "mesh.hh"
 #include "geometry.hh"
 #include "linear_system.hh"
 
@@ -455,7 +455,7 @@ static int calculate_singularities_deprecated(TriMesh &mesh)
     int sum_idx {};
 
     for (auto face : mesh.faces())
-        mesh.status(face).set_selected(false);
+        set_marked(mesh, face, false);
 
     for (auto face : mesh.faces()) if (!face.is_boundary())
     {
@@ -475,7 +475,7 @@ static int calculate_singularities_deprecated(TriMesh &mesh)
         const double w2 = normalize_angle(arg(z1/z0) - t2);
         const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
         const int idx = (int)round(ph); // index can only be -1, 0, 1
-        mesh.status(face).set_selected(idx != 0);
+        set_marked(mesh, face, idx != 0);
         sum_idx += idx;
     }
 
@@ -622,7 +622,7 @@ inline double calc_average_rescaled_sharp_angle(const TriMesh &mesh, const Vh &v
     double avg_theta {};
     int nl {};
 
-    for (auto hdge : mesh.voh_range(vh)) if (hdge.edge().selected())
+    for (auto hdge : mesh.voh_range(vh)) if (is_marked(mesh, hdge.edge()))
     {
         avg_theta += calc_rescaled_angle(mesh, hdge);
         ++nl;
@@ -637,7 +637,7 @@ inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &v
     auto hh = anchor_halfedge(mesh, vh);
     double max_dha {};
 
-    for (auto hdge : mesh.voh_range(vh)) if (hdge.edge().selected())
+    for (auto hdge : mesh.voh_range(vh)) if (is_marked(mesh, hdge.edge()))
     {
         double dha = abs(mesh.calc_dihedral_angle(hdge));
         if (max_dha < dha) { max_dha = dha; hh = hdge; }
@@ -658,7 +658,7 @@ static int setup_fixed_boundary(const TriMesh &mesh, const int n, Eigen::VectorX
 
     for (auto vert : mesh.vertices())
     {
-        if (vert.selected())
+        if (is_marked(mesh, vert))
         {
             u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
             C(v_i[vert]) = 1;
@@ -751,7 +751,7 @@ int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const do
     const double b2 = (b.conjugate().transpose()*M*b).norm();
     if (b2 > kEps) b = M*b / sqrt(b2);
 
-    if (nc) err = solve_fixed_constraints_simplical_LDLT(A, C, b, u);
+    if (nc) err = solve_simplical_LDLT(A, C, b, u);
     else    err = solve_simplical_LDLT(A, b, u);
 
     populate_solution(mesh, u);
@@ -761,13 +761,18 @@ int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const do
     return err;
 }
 
+void release_n_rosy(TriMesh &mesh)
+{
+    removeProperty<Vh, Comx>(mesh, _var_vso);
+}
+
 int calculate_n_rosy_singularities(TriMesh &mesh, const int n)
 {
     auto v_u = getProperty<Vh, Comx>(mesh, _var_vso);
     int sum_idx {};
 
     for (auto face : mesh.faces())
-        mesh.status(face).set_selected(false);
+        set_marked(mesh, face, false);
 
     for (auto face : mesh.faces()) if (!face.is_boundary())
     {
@@ -787,7 +792,7 @@ int calculate_n_rosy_singularities(TriMesh &mesh, const int n)
         const double w2 = normalize_angle(arg(z1/z0) - t2);
         const double ph = (w0 + w1 + w2 + tf) / (kPi*2.);
         const int idx = (int)round(ph); // index can only be -1, 0, 1
-        mesh.status(face).set_selected(idx != 0);
+        set_marked(mesh, face, idx != 0);
         sum_idx += idx;
     }
 
@@ -884,7 +889,7 @@ int calculate_n_rosy_singularities(TriMesh &mesh, const char *var_fvec, const in
     int sum_mism_index {};
 
     for (auto vert : mesh.vertices())
-        mesh.status(vert).set_selected(false);
+        set_marked(mesh, vert, false);
 
     for (auto vert : mesh.vertices()) if (!vert.is_boundary())
     {
@@ -902,7 +907,7 @@ int calculate_n_rosy_singularities(TriMesh &mesh, const char *var_fvec, const in
 
         m = ((m % n) + n) % n;
         sum_mism_index += m;
-        if (m) mesh.status(vert).set_selected(true);
+        if (m) set_marked(mesh, vert, true);
     }
 
     return sum_mism_index;

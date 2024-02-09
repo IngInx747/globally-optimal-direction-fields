@@ -333,7 +333,7 @@ inline int reduce_fixed_constraints(
 }
 
 template <class T>
-inline int solve_fixed_constraints_sparse_LU(
+inline int solve_sparse_LU(
     const Eigen::SparseMatrix<T> &A,
     const Eigen::VectorXi        &C,
     const Eigen::VectorX<T>      &y,
@@ -355,7 +355,7 @@ inline int solve_fixed_constraints_sparse_LU(
 }
 
 template <class T>
-inline int solve_fixed_constraints_simplical_LDLT(
+inline int solve_simplical_LDLT(
     const Eigen::SparseMatrix<T> &A,
     const Eigen::VectorXi        &C,
     const Eigen::VectorX<T>      &y,
@@ -377,7 +377,7 @@ inline int solve_fixed_constraints_simplical_LDLT(
 }
 
 template
-int solve_fixed_constraints_simplical_LDLT(
+int solve_simplical_LDLT(
     const Eigen::SparseMatrix<std::complex<double>> &A,
     const Eigen::VectorXi                           &C,
     const Eigen::VectorX<std::complex<double>>      &y,
