@@ -1,7 +1,7 @@
 #include <complex>
 #include "mesh.hh"
 #include "geometry.hh"
-#include "linear_system.hh"
+#include "sparse_solver.hh"
 
 using namespace OpenMesh;
 
