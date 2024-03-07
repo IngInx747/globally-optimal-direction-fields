@@ -3,11 +3,11 @@
 
 #include "mesh.hh"
 
-template <class Mesh>
-int read_mesh(Mesh&, const char*);
+template <class MeshT>
+int read_mesh(MeshT&, const char*);
 
-template <class Mesh>
-int save_mesh(const Mesh&, const char*);
+template <class MeshT>
+int save_mesh(const MeshT&, const char*);
 
 template <class MeshT>
 int save_marked_face_centroids(const MeshT&, const char*, const double offset);

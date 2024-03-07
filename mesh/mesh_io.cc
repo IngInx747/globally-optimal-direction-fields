@@ -62,8 +62,8 @@ int save_obj(
     return 0;
 }
 
-template <class Mesh>
-inline int read_mesh_builtin(Mesh &mesh, const char *filename)
+template <class MeshT>
+inline int read_mesh_builtin(MeshT &mesh, const char *filename)
 {
     int err { IO_ERR_TYPE::NO_ERROR };
 
@@ -88,9 +88,9 @@ inline int read_mesh_builtin(Mesh &mesh, const char *filename)
 
     if (!opt.vertex_has_texcoord()) mesh.release_vertex_texcoords2D();
 
-    if (!opt.vertex_has_normal()) mesh.release_face_normals();
+    if (!opt.vertex_has_normal()) mesh.release_vertex_normals();
 
-    if (!opt.vertex_has_color()) mesh.release_face_colors();
+    if (!opt.vertex_has_color()) mesh.release_vertex_colors();
 
     if (!opt.face_has_normal()) mesh.release_face_normals();
 
@@ -99,8 +99,8 @@ inline int read_mesh_builtin(Mesh &mesh, const char *filename)
     return err;
 }
 
-template <class Mesh>
-inline int save_mesh_builtin(const Mesh &mesh, const char *filename)
+template <class MeshT>
+inline int save_mesh_builtin(const MeshT &mesh, const char *filename)
 {
     int err { IO_ERR_TYPE::NO_ERROR };
 
@@ -112,17 +112,19 @@ inline int save_mesh_builtin(const Mesh &mesh, const char *filename)
 
     if (mesh.has_vertex_colors()) opt += IO::Options::VertexColor;
 
-    if (mesh.has_face_normals()) opt += IO::Options::VertexNormal;
+    if (mesh.has_face_normals()) opt += IO::Options::FaceNormal;
 
-    if (mesh.has_face_colors()) opt += IO::Options::VertexColor;
+    if (mesh.has_face_colors()) opt += IO::Options::FaceColor;
+
+    if (mesh.has_halfedge_texcoords2D()) opt += IO::Options::FaceTexCoord;
 
     if (!IO::write_mesh(mesh, filename, opt, 17i64)) err = IO_ERR_TYPE::INTERNAL;
 
     return err;
 }
 
-template <class Mesh>
-inline int read_mesh_detri2(Mesh &mesh, const char *filename)
+template <class MeshT>
+inline int read_mesh_detri2(MeshT &mesh, const char *filename)
 {
     constexpr size_t kInf = std::numeric_limits<std::streamsize>::max();
 
@@ -202,14 +204,14 @@ inline int read_mesh_detri2(Mesh &mesh, const char *filename)
         int i0 = std::get<0>(vid);
         int i1 = std::get<1>(vid);
         auto hdge = mesh.find_halfedge(mesh.vertex_handle(i0), mesh.vertex_handle(i1));
-        if (hdge.is_valid()) set_marked(mesh, hdge.edge(), true);
+        if (hdge.is_valid()) set_sharp(mesh, hdge.edge(), true);
     }
 
     return IO_ERR_TYPE::NO_ERROR;
 }
 
-template <class Mesh>
-inline int save_mesh_detri2(Mesh &mesh, const char *filename)
+template <class MeshT>
+inline int save_mesh_detri2(MeshT &mesh, const char *filename)
 {
     return IO_ERR_TYPE::UNSUPPORTED_FORMAT;
 }
@@ -240,12 +242,12 @@ static int save_mesh_detri2(const TriMesh &mesh, const char *filename)
     }
 
     int ne {};
-    for (auto edge : mesh.edges()) if (is_marked(mesh, edge)) ++ne;
+    for (auto edge : mesh.edges()) if (is_sharp(mesh, edge)) ++ne;
 
     out << "Edges\n" << ne << "\n";
     for (auto edge : mesh.edges())
     {
-        if (is_marked(mesh, edge))
+        if (is_sharp(mesh, edge))
         {
             auto vert0 = edge.v0(), vert1 = edge.v1();
             out << vert0.idx() + 1 << " " << vert1.idx() + 1 << " -1\n";
@@ -257,8 +259,8 @@ static int save_mesh_detri2(const TriMesh &mesh, const char *filename)
     return IO_ERR_TYPE::NO_ERROR;
 }
 
-template <class Mesh>
-int read_mesh(Mesh &mesh, const char *filename)
+template <class MeshT>
+int read_mesh(MeshT &mesh, const char *filename)
 {
     int err { IO_ERR_TYPE::NO_ERROR };
 
@@ -282,8 +284,8 @@ int read_mesh(Mesh &mesh, const char *filename)
     return err;
 }
 
-template <class Mesh>
-int save_mesh(const Mesh &mesh, const char *filename)
+template <class MeshT>
+int save_mesh(const MeshT &mesh, const char *filename)
 {
     int err { IO_ERR_TYPE::NO_ERROR };
 
