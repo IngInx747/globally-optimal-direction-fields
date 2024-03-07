@@ -12,6 +12,7 @@ with OpenMesh and Eigen.
 
 ## Results
 
-| ------------------------ | ------------------------ |
+|                          |                          |
+|:------------------------:|:------------------------:|
 | ![img](results/genus3.nrosy4.snapshot1.png?raw=true)  | ![img](results/genus3.nrosy4.snapshot2.png?raw=true)  |
 | ![img](results/fandisk.nrosy4.snapshot1.png?raw=true) | ![img](results/fandisk.nrosy4.snapshot2.png?raw=true) |
