@@ -8,7 +8,7 @@
 ////////////////////////////////////////////////////////////////
 
 template <class ScalarT>
-int dump_sparse_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
+int save_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
 {
     using ColumnIterator = Eigen::SparseMatrix<ScalarT>::InnerIterator;
 
@@ -23,7 +23,7 @@ int dump_sparse_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path
 }
 
 template <class ScalarT>
-int dump_sparse_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat, const char *path)
+int save_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat, const char *path)
 {
     using RowIterator = Eigen::SparseMatrix<ScalarT, Eigen::RowMajor>::InnerIterator;
 
@@ -38,16 +38,16 @@ int dump_sparse_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat,
 }
 
 template
-int dump_sparse_matrix(const Eigen::SparseMatrix<double>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<double>&, const char*);
 
 template
-int dump_sparse_matrix(const Eigen::SparseMatrix<std::complex<double>>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<std::complex<double>>&, const char*);
 
 template
-int dump_sparse_matrix(const Eigen::SparseMatrix<double, Eigen::RowMajor>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<double, Eigen::RowMajor>&, const char*);
 
 template
-int dump_sparse_matrix(const Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>&, const char*);
 
 ////////////////////////////////////////////////////////////////
 /// General solvers

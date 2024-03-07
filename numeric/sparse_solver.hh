@@ -4,7 +4,7 @@
 #include <Eigen/SparseCore>
 
 template <class ScalarT>
-int dump_sparse_matrix(const Eigen::SparseMatrix<ScalarT>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<ScalarT>&, const char*);
 
 template <typename ScalarT, int N_row, int N_col>
 int solve_simplical_LDLT(
