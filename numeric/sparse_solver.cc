@@ -157,6 +157,8 @@ int solve_simplical_LDLT(
 /// Constraint solvers
 ////////////////////////////////////////////////////////////////
 
+#if 0
+
 template <typename ScalarT>
 inline int reduce_fixed_constraints(
     const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &A_in,
@@ -267,6 +269,164 @@ inline int solve_iteratively(
     // write back to the original array
     for (int i = 0; i < x.size(); ++i)
         if (!C(i)) x(i) = x1(I(i));
+
+    return err;
+}
+
+#endif
+
+template <typename StorageIndex>
+inline Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, StorageIndex> column_permutation(const Eigen::VectorXi &c)
+{
+    Eigen::VectorXi p(c.rows());
+    int nv {}; // number of variables
+
+    for (int i = 0; i < c.rows(); ++i)
+        if (c(i)) { p(i) = nv++; }
+
+    for (int i = 0; i < c.rows(); ++i)
+        if (!c(i)) { p(i) = nv++; }
+
+    // Default Permutation ctor receives an array of row permutation.
+    // Transpose it to get a column permutation.
+    return Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, StorageIndex>(p).transpose();
+}
+
+/// Transform variables of the original constraint optimal
+///   problem to the ones of an reduced free optimal problem.
+/// x = M*u + k
+///   where u is the free variable vector
+///   and x is the original variable vector.
+template <typename ScalarT>
+inline int variables_tramsform(
+    const Eigen::VectorXi              &c,
+    const Eigen::VectorX<ScalarT>      &x,
+          Eigen::SparseMatrix<ScalarT> &M,
+          Eigen::VectorX<ScalarT>      &k)
+{
+    eigen_assert(c.rows() == x.rows() && "Number of variables are inconsistent");
+
+    const int nv = (int)c.rows(); // number of variables
+    const int n0 = c.sum();       // number of fixed variables
+    const int n1 = nv - n0;       // number of free variables
+
+    // Construct permutation P that
+    //   [...] P = [I | 0]
+    //
+    // Note that when permutation P is applied to the left of the masking vector
+    //   P | I | = | . | = c
+    //     | 0 |   | . |
+    //   it actually does the inversed permutation as of P applied on the right.
+    //
+    // This fact can be illustrated by transposing any matrix applied by P on the right
+    //   M'^T = (MP)^T = P^T M^T
+    //   in which P^T on the left permutates the same as P on the right.
+    //
+    // Applying P on the left of M'^T = P P^T M^T = M^T
+    //   shows P on the left does an inversed permutation of P on the right.
+    const auto P = column_permutation<Eigen::SparseMatrix<ScalarT>::StorageIndex>(c);
+
+    // construct k by masking
+    k = x.array() * (c.cast<ScalarT>()).array();
+
+    // construct M
+    Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> M_(nv, n1); M_.setZero();
+    Eigen::SparseMatrix<ScalarT> M1(n1, n1); M1.setIdentity();
+    M_.bottomRows(n1) = M1;
+    M = P * M_;
+
+    return Eigen::Success;
+}
+
+/// The same as above but to initialize the reduced vector meanwhile
+/// u0 = (P^T x0) | truncated | fixed part
+///               | retained  | free  part
+template <typename ScalarT>
+inline int variables_tramsform(
+    const Eigen::VectorXi              &c,
+    const Eigen::VectorX<ScalarT>      &x,
+          Eigen::SparseMatrix<ScalarT> &M,
+          Eigen::VectorX<ScalarT>      &k,
+          Eigen::VectorX<ScalarT>      &u)
+{
+    eigen_assert(c.rows() == x.rows() && "Number of variables are inconsistent");
+
+    const int nv = (int)c.rows(); // number of variables
+    const int n0 = c.sum();       // number of fixed variables
+    const int n1 = nv - n0;       // number of free variables
+
+    const auto P = column_permutation<Eigen::SparseMatrix<ScalarT>::StorageIndex>(c);
+
+    // construct k by masking
+    k = x.array() * (c.cast<ScalarT>()).array();
+
+    // construct M
+    Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> M_(nv, n1); M_.setZero();
+    Eigen::SparseMatrix<ScalarT> M1(n1, n1); M1.setIdentity();
+    M_.bottomRows(n1) = M1;
+    M = P * M_;
+
+    // initialize u with free variables in x
+    u = (P.transpose() * x).bottomRows(n1);
+
+    return Eigen::Success;
+}
+
+template <class SolverT, typename ScalarT>
+inline int solve_directly(
+    const Eigen::SparseMatrix<ScalarT> &A,
+    const Eigen::VectorXi              &C,
+    const Eigen::VectorX<ScalarT>      &y,
+          Eigen::VectorX<ScalarT>      &x)
+{
+    // Variables transform
+    Eigen::SparseMatrix<ScalarT> M;
+    Eigen::VectorX<ScalarT> k;
+    variables_tramsform(C, x, M, k);
+
+    // Reduce constraints
+    // min |A x - b|^2 => min |A (M*u + k) - b|^2 =>
+    // A x = b => M^T A M u = M^T (b - Ak) => A'u = b'
+    // A' ::= M^T A M
+    // b' ::= M^T (b - Ak)
+    Eigen::SparseMatrix<ScalarT> G;
+    Eigen::VectorX<ScalarT> h;
+    G = M.transpose() * A * M;
+    h = M.transpose() * (y - A*k);
+
+    // Solve reduced linear system
+    Eigen::VectorX<ScalarT> u;
+    int err = solve_directly<SolverT, ScalarT, -1, 1>(G, h, u);
+
+    // Write back
+    x = M*u + k;
+
+    return err;
+}
+
+template <class SolverT, typename ScalarT>
+inline int solve_iteratively(
+    const Eigen::SparseMatrix<ScalarT> &A,
+    const Eigen::VectorXi              &C,
+    const Eigen::VectorX<ScalarT>      &y,
+          Eigen::VectorX<ScalarT>      &x)
+{
+    // Variables transform
+    Eigen::SparseMatrix<ScalarT> M;
+    Eigen::VectorX<ScalarT> k, u;
+    variables_tramsform(C, x, M, k, u);
+
+    // Reduce constraints
+    Eigen::SparseMatrix<ScalarT> G;
+    Eigen::VectorX<ScalarT> h;
+    G = M.transpose() * A * M;
+    h = M.transpose() * (y - A*k);
+
+    // Solve reduced linear system
+    int err = solve_iteratively<SolverT, ScalarT, -1, 1>(G, h, u);
+
+    // Write back
+    x = M*u + k;
 
     return err;
 }
