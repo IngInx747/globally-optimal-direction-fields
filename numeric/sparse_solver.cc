@@ -294,15 +294,22 @@ inline Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, StorageIndex> co
 
 /// Transform variables of the original constraint optimal
 ///   problem to the ones of an reduced free optimal problem.
+///
 /// x = M*u + k
-///   where u is the free variable vector
+///   where u is the reduced free variable vector
 ///   and x is the original variable vector.
+///
+/// Optional: initialize the reduced vector meanwhile
+/// u0 = P^T x0 | truncated | fixed part
+///             | retained  | free  part
 template <typename ScalarT>
 inline int variables_tramsform(
     const Eigen::VectorXi              &c,
     const Eigen::VectorX<ScalarT>      &x,
           Eigen::SparseMatrix<ScalarT> &M,
-          Eigen::VectorX<ScalarT>      &k)
+          Eigen::VectorX<ScalarT>      &k,
+          Eigen::VectorX<ScalarT>      &u,
+    const bool to_init_free_vars)
 {
     eigen_assert(c.rows() == x.rows() && "Number of variables are inconsistent");
 
@@ -335,12 +342,23 @@ inline int variables_tramsform(
     M_.bottomRows(n1) = M1;
     M = P * M_;
 
+    // Initialize u with free variables in x
+    if (to_init_free_vars)
+        u = (P.transpose() * x).bottomRows(n1);
+
     return Eigen::Success;
 }
 
-/// The same as above but to initialize the reduced vector meanwhile
-/// u0 = (P^T x0) | truncated | fixed part
-///               | retained  | free  part
+template <typename ScalarT>
+inline int variables_tramsform(
+    const Eigen::VectorXi              &c,
+    const Eigen::VectorX<ScalarT>      &x,
+          Eigen::SparseMatrix<ScalarT> &M,
+          Eigen::VectorX<ScalarT>      &k)
+{
+    return variables_tramsform(c, x, M, k, Eigen::VectorX<ScalarT> {}, false);
+}
+
 template <typename ScalarT>
 inline int variables_tramsform(
     const Eigen::VectorXi              &c,
@@ -349,27 +367,7 @@ inline int variables_tramsform(
           Eigen::VectorX<ScalarT>      &k,
           Eigen::VectorX<ScalarT>      &u)
 {
-    eigen_assert(c.rows() == x.rows() && "Number of variables are inconsistent");
-
-    const int nv = (int)c.rows(); // number of variables
-    const int n0 = c.sum();       // number of fixed variables
-    const int n1 = nv - n0;       // number of free variables
-
-    const auto P = column_permutation<Eigen::SparseMatrix<ScalarT>::StorageIndex>(c);
-
-    // construct k by masking
-    k = x.array() * (c.cast<ScalarT>()).array();
-
-    // construct M
-    Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> M_(nv, n1); M_.setZero();
-    Eigen::SparseMatrix<ScalarT> M1(n1, n1); M1.setIdentity();
-    M_.bottomRows(n1) = M1;
-    M = P * M_;
-
-    // initialize u with free variables in x
-    u = (P.transpose() * x).bottomRows(n1);
-
-    return Eigen::Success;
+    return variables_tramsform(c, x, M, k, u, true);
 }
 
 template <class SolverT, typename ScalarT>
