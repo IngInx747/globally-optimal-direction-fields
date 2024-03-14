@@ -317,26 +317,13 @@ inline int variables_tramsform(
     const int n0 = c.sum();       // number of fixed variables
     const int n1 = nv - n0;       // number of free variables
 
-    // Construct permutation P that
-    //   [...] P = [I | 0]
-    //
-    // Note that when permutation P is applied to the left of the masking vector
-    //   P | I | = | . | = c
-    //     | 0 |   | . |
-    //   it actually does the inversed permutation as of P applied on the right.
-    //
-    // This fact can be illustrated by transposing any matrix applied by P on the right
-    //   M'^T = (MP)^T = P^T M^T
-    //   in which P^T on the left permutates the same as P on the right.
-    //
-    // Applying P on the left of M'^T = P P^T M^T = M^T
-    //   shows P on the left does an inversed permutation of P on the right.
+    // Construct permutation P that [...] P = [I|0] (and implicitly, P [I|0] = [...])
     const auto P = column_permutation<Eigen::SparseMatrix<ScalarT>::StorageIndex>(c);
 
-    // construct k by masking
+    // Construct k by masking
     k = x.array() * (c.cast<ScalarT>()).array();
 
-    // construct M
+    // Construct M
     Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> M_(nv, n1); M_.setZero();
     Eigen::SparseMatrix<ScalarT> M1(n1, n1); M1.setIdentity();
     M_.bottomRows(n1) = M1;
@@ -379,12 +366,17 @@ inline int solve_directly(
 {
     // Variables transform
     Eigen::SparseMatrix<ScalarT> M;
-    Eigen::VectorX<ScalarT> k;
+    Eigen::VectorX<ScalarT> k, u;
     variables_tramsform(C, x, M, k);
 
+    // min |Ax - b|^2, s.t. Cx = d
+    //   => min |A (Mu + k) - b|^2
+    //   => min |AMu + (b - AK)|^2
+    // solution A^TA x = A^Tb
+    //   => M^T A^T AM u = M^T A^T(b - Ak)
+    //   => M^T(A^TA)M u = M^T(A^Tb - (A^TA)k)
+
     // Reduce constraints
-    // min |A x - b|^2 => min |A (M*u + k) - b|^2 =>
-    // A x = b => M^T A M u = M^T (b - Ak) => A'u = b'
     // A' ::= M^T A M
     // b' ::= M^T (b - Ak)
     Eigen::SparseMatrix<ScalarT> G;
@@ -393,7 +385,6 @@ inline int solve_directly(
     h = M.transpose() * (y - A*k);
 
     // Solve reduced linear system
-    Eigen::VectorX<ScalarT> u;
     int err = solve_directly<SolverT, ScalarT, -1, 1>(G, h, u);
 
     // Write back
