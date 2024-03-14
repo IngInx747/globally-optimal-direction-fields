@@ -692,39 +692,8 @@ int generate_n_rosy_free(TriMesh &mesh, const int n, const double s, const doubl
 
     populate_solution(mesh, u);
 
-    //for (int i = 0; i < u.size(); ++i) printf("%lf\n", degree(arg(u(i))));
-    //std::cout << "min eig = " << u.dot(A*u) / u.dot(M*u) << std::endl;
-
     return err;
 }
-
-#if 0
-int generate_n_rosy_curvature_aligned(TriMesh &mesh, const int n, const double s, const double lambda)
-{
-    constexpr double kEps = 1e-8;
-    Eigen::SparseMatrix<Comx> M, A;
-    Eigen::VectorX<Comx> u, b;
-
-    csinits();
-    setup_indices(mesh);
-    setup_mass_matrix(mesh, n, M);
-    setup_energy_matrix(mesh, n, A, s);
-
-    setup_curvature_alignment(mesh, n, b);
-    const double b2 = (b.conjugate().transpose()*M*b).norm();
-    if (b2 > kEps) b = M*b / sqrt(b2);
-
-    A += M*(-lambda + kEps);
-
-    int err = solve_simplical_LDLT(A, b, u);
-
-    populate_solution(mesh, u);
-
-    removeProperty<Vh, int>   (mesh, _var_vid);
-
-    return err;
-}
-#endif
 
 int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const double lambda)
 {
@@ -793,15 +762,6 @@ int calculate_n_rosy_singularities(TriMesh &mesh, const int n)
 
     return sum_idx;
 }
-
-//inline Vec3 pull_back(const TriMesh &mesh, const Vh &vh, const Comx &u)
-//{
-//    const auto ex = mesh.calc_edge_vector(mesh.halfedge_handle(vh));
-//    const auto nz = mesh.calc_normal(vh).normalized();
-//    const auto nx = (ex - dot(ex,nz)*nz).normalized();
-//    const auto ny = cross(nz, nx).normalized();
-//    return nx*real(u) + ny*imag(u);
-//}
 
 void pull_back_vertex_space(TriMesh &mesh, const char *var_vvec, const int n)
 {
