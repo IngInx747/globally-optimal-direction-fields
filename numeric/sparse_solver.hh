@@ -4,30 +4,30 @@
 #include <Eigen/SparseCore>
 
 template <class ScalarT>
-int save_matrix(const Eigen::SparseMatrix<ScalarT>&, const char*);
+inline int save_matrix(const Eigen::SparseMatrix<ScalarT>&, const char*);
 
 template <typename ScalarT, int N_row, int N_col>
-int solve_simplical_LDLT(
+inline int solve_simplical_LDLT(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x);
 
 template <class ScalarT>
 inline int solve_simplical_LDLT(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x);
 
 template <class T>
-int solve_inversed_power(
+inline int solve_inversed_power(
     const Eigen::SparseMatrix<T> &A,
           Eigen::VectorX<T> &x,
     const double tol,
     const int n_iter);
 
 template <class T>
-int solve_inversed_power(
+inline int solve_inversed_power(
     const Eigen::SparseMatrix<T> &A,
     const Eigen::SparseMatrix<T> &B,
           Eigen::VectorX<T> &x,

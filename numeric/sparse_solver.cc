@@ -8,7 +8,7 @@
 ////////////////////////////////////////////////////////////////
 
 template <class ScalarT>
-int save_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
+inline int save_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
 {
     using ColumnIterator = Eigen::SparseMatrix<ScalarT>::InnerIterator;
 
@@ -23,7 +23,7 @@ int save_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
 }
 
 template <class ScalarT>
-int save_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat, const char *path)
+inline int save_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat, const char *path)
 {
     using RowIterator = Eigen::SparseMatrix<ScalarT, Eigen::RowMajor>::InnerIterator;
 
@@ -56,7 +56,7 @@ int save_matrix(const Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>
 template <class SolverT, typename ScalarT, int N_row, int N_col>
 inline int solve_directly(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x)
 {
     SolverT solver;
@@ -64,7 +64,7 @@ inline int solve_directly(
     solver.compute(A);
     if (solver.info() != Eigen::Success) { return solver.info(); }
 
-    x = solver.solve(y);
+    x = solver.solve(b);
     if (solver.info() != Eigen::Success) { return solver.info(); }
 
     return Eigen::Success;
@@ -73,7 +73,7 @@ inline int solve_directly(
 template <class SolverT, typename ScalarT, int N_row, int N_col>
 inline int solve_iteratively(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x)
 {
     SolverT solver;
@@ -81,7 +81,7 @@ inline int solve_iteratively(
     solver.compute(A);
     if (solver.info() != Eigen::Success) { return solver.info(); }
 
-    x = solver.solveWithGuess(y, x);
+    x = solver.solveWithGuess(b, x);
     if (solver.info() != Eigen::Success) { return solver.info(); }
 
     return Eigen::Success;
@@ -90,31 +90,31 @@ inline int solve_iteratively(
 template <typename ScalarT, int N_row, int N_col>
 inline int solve_sparse_LU(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x)
 {
     using SolverType = Eigen::SparseLU<Eigen::SparseMatrix<ScalarT>>;
-    return solve_directly<SolverType, ScalarT, N_row, N_col>(A, y, x);
+    return solve_directly<SolverType, ScalarT, N_row, N_col>(A, b, x);
 }
 
 template <typename ScalarT, int N_row, int N_col>
 inline int solve_simplical_LDLT(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x)
 {
     using SolverType = Eigen::SimplicialLDLT<Eigen::SparseMatrix<ScalarT>>;
-    return solve_directly<SolverType, ScalarT, N_row, N_col>(A, y, x);
+    return solve_directly<SolverType, ScalarT, N_row, N_col>(A, b, x);
 }
 
 template <typename ScalarT, int N_row, int N_col>
 inline int solve_conjugate_gradient(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::Matrix<ScalarT, N_row, N_col> &y,
+    const Eigen::Matrix<ScalarT, N_row, N_col> &b,
           Eigen::Matrix<ScalarT, N_row, N_col> &x)
 {
     using SolverType = Eigen::ConjugateGradient<Eigen::SparseMatrix<ScalarT>>;
-    return solve_iteratively<SolverType, ScalarT, N_row, N_col>(A, y, x);
+    return solve_iteratively<SolverType, ScalarT, N_row, N_col>(A, b, x);
 }
 
 //template
@@ -156,124 +156,6 @@ int solve_simplical_LDLT(
 ////////////////////////////////////////////////////////////////
 /// Constraint solvers
 ////////////////////////////////////////////////////////////////
-
-#if 0
-
-template <typename ScalarT>
-inline int reduce_fixed_constraints(
-    const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &A_in,
-    const Eigen::VectorX<ScalarT>                       &y_in,
-    const Eigen::VectorX<ScalarT>                       &x_in,
-    const Eigen::VectorXi                               &is_fixed,
-          Eigen::SparseMatrix<ScalarT>                  &A_out,
-          Eigen::VectorX<ScalarT>                       &y_out,
-          Eigen::VectorX<ScalarT>                       &x_out,
-          Eigen::VectorXi                               &indices)
-{
-    using RowIter = Eigen::SparseMatrix<ScalarT, Eigen::RowMajor>::InnerIterator;
-
-    indices.resize(y_in.size()); indices.setConstant(-1);
-    int nv {};
-
-    // reindex variables
-    for (int i = 0; i < y_in.size(); ++i)
-        if (!is_fixed(i)) indices(i) = nv++;
-
-    // reduced linear system
-    A_out.resize(nv, nv); A_out.setZero();
-    y_out.resize(nv);     y_out.setZero();
-    x_out.resize(nv);     x_out.setZero();
-
-    std::vector<Eigen::Triplet<ScalarT>> coef {};
-
-    for (int i = 0; i < A_in.outerSize(); ++i) if (!is_fixed(i))
-    {
-        const int id = indices(i);
-
-        y_out(id) = y_in(i);
-        x_out(id) = x_in(i);
-
-        for (RowIter iter(A_in, i); iter; ++iter)
-        {
-            const int j = (int)iter.col();
-            const int jd = indices(j);
-
-            if (!is_fixed(j))
-            {
-                coef.emplace_back(id, jd, A_in.coeff(i, j));
-            }
-            else
-            {
-                y_out(id) -= A_in.coeff(i, j) * x_in(j);
-            }
-        }
-    }
-
-    A_out.setFromTriplets(coef.begin(), coef.end()); coef.clear();
-
-    return nv;
-}
-
-template <typename ScalarT>
-inline int reduce_fixed_constraints(
-    const Eigen::SparseMatrix<ScalarT> &A_in,
-    const Eigen::VectorX<ScalarT>      &y_in,
-    const Eigen::VectorX<ScalarT>      &x_in,
-    const Eigen::VectorXi              &is_fixed,
-          Eigen::SparseMatrix<ScalarT> &A_out,
-          Eigen::VectorX<ScalarT>      &y_out,
-          Eigen::VectorX<ScalarT>      &x_out,
-          Eigen::VectorXi              &indices)
-{
-    Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> A_rm(A_in);
-    return reduce_fixed_constraints(A_rm, y_in, x_in, is_fixed, A_out, y_out, x_out, indices);
-}
-
-template <class SolverT, typename ScalarT>
-inline int solve_directly(
-    const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
-          Eigen::VectorX<ScalarT>      &x)
-{
-    Eigen::VectorXi I;
-    Eigen::VectorX<ScalarT> x1, y1;
-    Eigen::SparseMatrix<ScalarT> A1;
-
-    reduce_fixed_constraints(A, y, x, C, A1, y1, x1, I);
-
-    int err = solve_directly<SolverT, ScalarT, -1, 1>(A1, y1, x1);
-
-    // write back to the original array
-    for (int i = 0; i < x.size(); ++i)
-        if (!C(i)) x(i) = x1(I(i));
-
-    return err;
-}
-
-template <class SolverT, typename ScalarT>
-inline int solve_iteratively(
-    const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
-          Eigen::VectorX<ScalarT>      &x)
-{
-    Eigen::VectorXi I;
-    Eigen::VectorX<ScalarT> x1, y1;
-    Eigen::SparseMatrix<ScalarT> A1;
-
-    reduce_fixed_constraints(A, y, x, C, A1, y1, x1, I);
-
-    int err = solve_iteratively<SolverT, ScalarT, -1, 1>(A1, y1, x1);
-
-    // write back to the original array
-    for (int i = 0; i < x.size(); ++i)
-        if (!C(i)) x(i) = x1(I(i));
-
-    return err;
-}
-
-#endif
 
 template <typename StorageIndex>
 inline Eigen::PermutationMatrix<Eigen::Dynamic, Eigen::Dynamic, StorageIndex> column_permutation(const Eigen::VectorXi &c)
@@ -360,14 +242,14 @@ inline int variables_tramsform(
 template <class SolverT, typename ScalarT>
 inline int solve_directly(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x)
 {
     // Variables transform
     Eigen::SparseMatrix<ScalarT> M;
     Eigen::VectorX<ScalarT> k, u;
-    variables_tramsform(C, x, M, k);
+    variables_tramsform(c, x, M, k);
 
     // min |Ax - b|^2, s.t. Cx = d
     //   => min |A (Mu + k) - b|^2
@@ -382,7 +264,7 @@ inline int solve_directly(
     Eigen::SparseMatrix<ScalarT> G;
     Eigen::VectorX<ScalarT> h;
     G = M.transpose() * A * M;
-    h = M.transpose() * (y - A*k);
+    h = M.transpose() * (b - A*k);
 
     // Solve reduced linear system
     int err = solve_directly<SolverT, ScalarT, -1, 1>(G, h, u);
@@ -396,20 +278,20 @@ inline int solve_directly(
 template <class SolverT, typename ScalarT>
 inline int solve_iteratively(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x)
 {
     // Variables transform
     Eigen::SparseMatrix<ScalarT> M;
     Eigen::VectorX<ScalarT> k, u;
-    variables_tramsform(C, x, M, k, u);
+    variables_tramsform(c, x, M, k, u);
 
     // Reduce constraints
     Eigen::SparseMatrix<ScalarT> G;
     Eigen::VectorX<ScalarT> h;
     G = M.transpose() * A * M;
-    h = M.transpose() * (y - A*k);
+    h = M.transpose() * (b - A*k);
 
     // Solve reduced linear system
     int err = solve_iteratively<SolverT, ScalarT, -1, 1>(G, h, u);
@@ -423,42 +305,42 @@ inline int solve_iteratively(
 template <typename ScalarT>
 inline int solve_sparse_LU(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x)
 {
     using SolverType = Eigen::SparseLU<Eigen::SparseMatrix<ScalarT>>;
-    return solve_directly<SolverType, ScalarT>(A, C, y, x);
+    return solve_directly<SolverType, ScalarT>(A, b, c, x);
 }
 
 template <typename ScalarT>
 inline int solve_simplical_LDLT(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x)
 {
     using SolverType = Eigen::SimplicialLDLT<Eigen::SparseMatrix<ScalarT>>;
-    return solve_directly<SolverType, ScalarT>(A, C, y, x);
+    return solve_directly<SolverType, ScalarT>(A, b, c, x);
 }
 
 template <typename ScalarT>
 inline int solve_conjugate_gradient(
     const Eigen::SparseMatrix<ScalarT> &A,
-    const Eigen::VectorXi              &C,
-    const Eigen::VectorX<ScalarT>      &y,
+    const Eigen::VectorX<ScalarT>      &b,
+    const Eigen::VectorXi              &c,
           Eigen::VectorX<ScalarT>      &x)
 {
     using SolverType = Eigen::ConjugateGradient<Eigen::SparseMatrix<ScalarT>>;
-    return solve_iteratively<SolverType, ScalarT>(A, C, y, x);
+    return solve_iteratively<SolverType, ScalarT>(A, b, c, x);
 }
 
 template
 int solve_simplical_LDLT(
-    const Eigen::SparseMatrix<std::complex<double>> &A,
-    const Eigen::VectorXi                           &C,
-    const Eigen::VectorX<std::complex<double>>      &y,
-          Eigen::VectorX<std::complex<double>>      &x);
+    const Eigen::SparseMatrix<std::complex<double>> &,
+    const Eigen::VectorX<std::complex<double>>      &,
+    const Eigen::VectorXi                           &,
+          Eigen::VectorX<std::complex<double>>      &);
 
 ////////////////////////////////////////////////////////////////
 /// EigV solver

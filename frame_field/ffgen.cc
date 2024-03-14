@@ -700,7 +700,7 @@ int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const do
     constexpr double kEps = 1e-8;
     Eigen::SparseMatrix<Comx> M, A;
     Eigen::VectorX<Comx> u, b;
-    Eigen::VectorXi C;
+    Eigen::VectorXi c;
     int err {};
 
     csinits();
@@ -710,14 +710,14 @@ int generate_n_rosy_aligned(TriMesh &mesh, const int n, const double s, const do
     A += M*(-lambda + kEps);
 
     // prescribed directions as fixed conditions
-    int nc = setup_fixed_boundary(mesh, n, u, C);
+    int nc = setup_fixed_boundary(mesh, n, u, c);
 
     // curvatures as guidance of the solution
     setup_curvature_alignment(mesh, n, b);
     const double b2 = (b.conjugate().transpose()*M*b).norm();
     if (b2 > kEps) b = M*b / sqrt(b2);
 
-    if (nc) err = solve_simplical_LDLT(A, C, b, u);
+    if (nc) err = solve_simplical_LDLT(A, b, c, u);
     else    err = solve_simplical_LDLT(A, b, u);
 
     populate_solution(mesh, u);
