@@ -1,5 +1,5 @@
-#include <queue>
 #include <fstream>
+#include <iomanip> // std::setprecision
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
@@ -7,47 +7,73 @@
 /// Utility
 ////////////////////////////////////////////////////////////////
 
-template <class ScalarT>
-inline int save_matrix(const Eigen::SparseMatrix<ScalarT> &mat, const char *path)
+template <typename ScalarT>
+inline int save_matrix(
+    const Eigen::MatrixX<ScalarT> &mat,
+    const char *filename,
+    const std::streamsize prec)
 {
-    using ColumnIterator = Eigen::SparseMatrix<ScalarT>::InnerIterator;
+    std::ofstream out(filename, std::ios::out);
+    if (!out) return out.bad();
 
-    std::ofstream out(path, std::ios::out);
+    if (prec) out << std::setprecision(prec);
+
     out << mat.rows() << " " << mat.cols() << "\n";
+
+    for (int i = 0; i < mat.rows(); ++i)
+    {
+        for (int j = 0; j < mat.cols(); ++j)
+        {
+            out << mat(i, j) << " ";
+        }
+        
+        out << "\n";
+    }
+
+    return 0;
+}
+
+template
+int save_matrix(const Eigen::MatrixX<double>&, const char*, const std::streamsize);
+
+template
+int save_matrix(const Eigen::MatrixX<std::complex<double>>&, const char*, const std::streamsize);
+
+template <typename ScalarT, int OptionsN>
+inline int save_matrix(
+    const Eigen::SparseMatrix<ScalarT, OptionsN> &mat,
+    const char *filename,
+    const std::streamsize prec)
+{
+    using MatrixIterator = Eigen::SparseMatrix<ScalarT, OptionsN>::InnerIterator;
+
+    std::ofstream out(filename, std::ios::out);
+    if (!out) return out.bad();
+
+    if (prec) out << std::setprecision(prec);
+
+    out << mat.rows() << " " << mat.cols() << " " << mat.nonZeros() << "\n";
 
     for (int j = 0; j < mat.outerSize(); ++j)
-        for (ColumnIterator it(mat, j); it; ++it)
-            out << it.row() << " " << it.col() << " " << it.value() << "\n";
-
-    return 0;
-}
-
-template <class ScalarT>
-inline int save_matrix(const Eigen::SparseMatrix<ScalarT, Eigen::RowMajor> &mat, const char *path)
-{
-    using RowIterator = Eigen::SparseMatrix<ScalarT, Eigen::RowMajor>::InnerIterator;
-
-    std::ofstream out(path, std::ios::out);
-    out << mat.rows() << " " << mat.cols() << "\n";
-
-    for (int i = 0; i < mat.outerSize(); ++i)
-        for (RowIterator it(mat, i); it; ++it)
-            out << it.row() << " " << it.col() << " " << it.value() << "\n";
+        for (MatrixIterator it(mat, j); it; ++it)
+            out << it.row() + 1 << " "
+                << it.col() + 1 << " "
+                << it.value() << "\n";
 
     return 0;
 }
 
 template
-int save_matrix(const Eigen::SparseMatrix<double>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<double>&, const char*, const std::streamsize);
 
 template
-int save_matrix(const Eigen::SparseMatrix<std::complex<double>>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<double, Eigen::RowMajor>&, const char*, const std::streamsize);
 
 template
-int save_matrix(const Eigen::SparseMatrix<double, Eigen::RowMajor>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<std::complex<double>>&, const char*, const std::streamsize);
 
 template
-int save_matrix(const Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>&, const char*);
+int save_matrix(const Eigen::SparseMatrix<std::complex<double>, Eigen::RowMajor>&, const char*, const std::streamsize);
 
 ////////////////////////////////////////////////////////////////
 /// General solvers
@@ -334,6 +360,13 @@ inline int solve_conjugate_gradient(
     using SolverType = Eigen::ConjugateGradient<Eigen::SparseMatrix<ScalarT>>;
     return solve_iteratively<SolverType, ScalarT>(A, b, c, x);
 }
+
+//template
+//int solve_simplical_LDLT(
+//    const Eigen::SparseMatrix<double> &,
+//    const Eigen::VectorX<double>      &,
+//    const Eigen::VectorXi             &,
+//          Eigen::VectorX<double>      &);
 
 template
 int solve_simplical_LDLT(

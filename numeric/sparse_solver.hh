@@ -1,10 +1,19 @@
-#ifndef LINEAR_SYSTEM_SOLVER_HH
-#define LINEAR_SYSTEM_SOLVER_HH
+#ifndef SPARSE_SOLVER_HH
+#define SPARSE_SOLVER_HH
 
 #include <Eigen/SparseCore>
 
-template <class ScalarT>
-inline int save_matrix(const Eigen::SparseMatrix<ScalarT>&, const char*);
+template <typename ScalarT>
+inline int save_matrix(
+    const Eigen::MatrixX<ScalarT> &mat,
+    const char *filename,
+    const std::streamsize prec = 0);
+
+template <typename ScalarT, int OptionsN>
+inline int save_matrix(
+    const Eigen::SparseMatrix<ScalarT, OptionsN>&,
+    const char *filename,
+    const std::streamsize prec = 0);
 
 template <typename ScalarT, int N_row, int N_col>
 inline int solve_simplical_LDLT(
