@@ -621,7 +621,7 @@ inline double calc_average_rescaled_sharp_angle(const TriMesh &mesh, const Vh &v
     double avg_theta {};
     int nl {};
 
-    for (auto hdge : mesh.voh_range(vh)) if (is_marked(mesh, hdge.edge()))
+    for (auto hdge : mesh.voh_range(vh)) if (is_sharp(mesh, hdge.edge()))
     {
         avg_theta += calc_rescaled_angle(mesh, hdge);
         ++nl;
@@ -636,7 +636,7 @@ inline double calc_one_of_rescaled_sharp_angles(const TriMesh &mesh, const Vh &v
     auto hh = anchor_halfedge(mesh, vh);
     double max_dha {};
 
-    for (auto hdge : mesh.voh_range(vh)) if (is_marked(mesh, hdge.edge()))
+    for (auto hdge : mesh.voh_range(vh)) if (is_sharp(mesh, hdge.edge()))
     {
         double dha = abs(mesh.calc_dihedral_angle(hdge));
         if (max_dha < dha) { max_dha = dha; hh = hdge; }
@@ -657,7 +657,7 @@ static int setup_fixed_boundary(const TriMesh &mesh, const int n, Eigen::VectorX
 
     for (auto vert : mesh.vertices())
     {
-        if (is_marked(mesh, vert))
+        if (is_sharp(mesh, vert))
         {
             u(v_i[vert]) = e_i(calc_average_rescaled_sharp_angle(mesh, vert) * n);
             C(v_i[vert]) = 1;

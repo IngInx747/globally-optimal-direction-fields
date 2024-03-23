@@ -36,14 +36,14 @@ inline bool is_good_to_fix(const TriMesh &mesh, const Vh &vh, const double da)
 {
     int nl {};
     for (auto edge : mesh.ve_range(vh))
-        if (is_marked(mesh, edge)) ++nl;
+        if (is_sharp(mesh, edge)) ++nl;
 
     if (nl == 1) return true;
 
     if (nl == 2)
     {
         Vec3 de[2]; int ne {};
-        for (auto edge : mesh.ve_range(vh)) if (is_marked(mesh, edge))
+        for (auto edge : mesh.ve_range(vh)) if (is_sharp(mesh, edge))
             de[ne++] = mesh.calc_edge_vector(edge).normalized();
         // check if the feature line is too much bended
         return abs(dot(de[0], de[1])) >= cos(da);
@@ -108,28 +108,28 @@ int main(const int argc, const char **argv)
     if (alignment)
     {
         for (auto edge : mesh.edges()) if (edge.is_boundary())
-            set_marked(mesh, edge, true);
+            set_sharp(mesh, edge, true);
 
         if (sharp_dihedral_angle > 0)
         {
             printf("Sharp dihedral angle: %.1f\n", sharp_dihedral_angle);
             for (auto edge : mesh.edges())
                 if (abs(mesh.calc_dihedral_angle(edge)) > radian(sharp_dihedral_angle))
-                    set_marked(mesh, edge, true);
+                    set_sharp(mesh, edge, true);
         }
     }
 
     // mark fixed vertices
     if (alignment)
     {
-        for (auto hdge : mesh.halfedges()) if (is_marked(mesh, hdge.edge()))
-            set_marked(mesh, hdge.to(), true);
+        for (auto hdge : mesh.halfedges()) if (is_sharp(mesh, hdge.edge()))
+            set_sharp(mesh, hdge.to(), true);
 
         // remove bended feature vertices
         printf("Maximum bending angle: %.1f\n", max_bending_angle);
-        for (auto vert : mesh.vertices()) if (is_marked(mesh, vert))
+        for (auto vert : mesh.vertices()) if (is_sharp(mesh, vert))
             if (!is_good_to_fix(mesh, vert, radian(max_bending_angle)))
-                set_marked(mesh, vert, false);
+                set_sharp(mesh, vert, false);
     }
 
     // generate n-rosy complex
